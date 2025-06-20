@@ -72,7 +72,7 @@ RUN make -C src/go phenix-tunneler
 
 # Allow installing from a fork of sceptre-phenix-apps that could
 # exist on GitHub or elsewhere.
-ARG APPS_REPO=github.com/sandialabs/sceptre-phenix-apps
+ARG APPS_REPO=github.com/htoohey22/sceptre-phenix-apps
 ARG APPS_BRANCH=main
 
 RUN git clone --branch ${APPS_BRANCH} https://${APPS_REPO}.git /phenix-apps
