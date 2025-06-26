@@ -1279,22 +1279,25 @@ func (this SOH) customTest(ctx context.Context, wg *mm.StateGroup, ns string, no
 	script := fmt.Sprintf("%s-%s", host, stringSpacePattern.ReplaceAllString(test.Name, "_"))
 	path := fmt.Sprintf("%s/images/%s/%s", common.PhenixBase, ns, script)
 
-	if err := os.WriteFile(path, []byte(test.TestScript), 0600); err != nil {
-		wg.AddError(fmt.Errorf("unable to write test script to file: %v", err), meta)
-		return
-	}
-
 	executor := test.Executor
 	if executor == "" {
 		switch strings.ToLower(node.Hardware().OSType()) {
 		case "windows":
 			executor = "powershell -NoProfile -ExecutionPolicy bypass -File"
+			path += ".ps1"
 		default:
 			executor = "bash"
 		}
+	} else if strings.HasPrefix(executor, "powershell") {
+		path += ".ps1"
 	}
 
-	command := fmt.Sprintf("%s /tmp/miniccc/files/%s", executor, script)
+	if err := os.WriteFile(path, []byte(test.TestScript), 0600); err != nil {
+		wg.AddError(fmt.Errorf("unable to write test script to file: %v", err), meta)
+		return
+	}
+
+	command := fmt.Sprintf("%s /tmp/miniccc/files/%s/%s", executor, script, ns)
 	opts := []mm.C2Option{mm.C2NS(ns), mm.C2VM(host), mm.C2SendFile(script), mm.C2Command(command), mm.C2Timeout(this.md.c2Timeout)}
 
 	if this.md.useUUIDForC2Active(host) {
