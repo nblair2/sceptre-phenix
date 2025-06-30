@@ -1297,7 +1297,7 @@ func (this SOH) customTest(ctx context.Context, wg *mm.StateGroup, ns string, no
 		return
 	}
 
-	command := fmt.Sprintf("%s /tmp/miniccc/files/%s/%s", executor, script, ns)
+	command := fmt.Sprintf("%s /tmp/miniccc/files/%s/%s", executor, ns, script)
 	opts := []mm.C2Option{mm.C2NS(ns), mm.C2VM(host), mm.C2SendFile(script), mm.C2Command(command), mm.C2Timeout(this.md.c2Timeout)}
 
 	if this.md.useUUIDForC2Active(host) {
