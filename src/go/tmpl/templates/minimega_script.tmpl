@@ -33,11 +33,13 @@ ns add-host localhost
         {{- if (derefBool .General.Snapshot) -}}
             {{ $firstDrive := index .Hardware.Drives 0 }}
 disk snapshot {{ $firstDrive.Image }} {{ $.SnapshotName .General.Hostname }}
-            {{- if gt (len .Injections) 0 }}
+            {{- if ne $firstDrive.GetInjectPartition 0 }}
+                {{- if gt (len .Injections) 0 }}
 disk inject {{ $.SnapshotName .General.Hostname }}:{{ $firstDrive.GetInjectPartition }} files {{ .FileInjects $basedir }}
-            {{- end }}
-            {{- if gt (len .Deletions) 0 }}
+                {{- end }}
+                {{- if gt (len .Deletions) 0 }}
 disk inject {{ $.SnapshotName .General.Hostname }}:{{ $firstDrive.GetInjectPartition }} delete files {{ .FileDeletions }}
+                {{- end }}
             {{- end }}
         {{- end }}
 clear vm config
