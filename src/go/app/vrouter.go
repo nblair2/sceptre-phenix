@@ -619,7 +619,7 @@ func (Vrouter) processACL(md map[string]interface{}, network ifaces.NodeNetwork)
 
 		for _, net := range network.Interfaces() {
 			if iface == net.Name() {
-				net.SetRulesetOut(rule)
+				net.SetRulesetIn(rule)
 
 				found = true
 				break
@@ -649,7 +649,7 @@ func (Vrouter) processACL(md map[string]interface{}, network ifaces.NodeNetwork)
 
 		for _, net := range network.Interfaces() {
 			if iface == net.Name() {
-				net.SetRulesetIn(rule)
+				net.SetRulesetOut(rule)
 
 				found = true
 				break

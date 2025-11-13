@@ -33,21 +33,19 @@ set protocols ospf interface eth{{ $idx }} hello-interval {{ $node.Network.OSPF.
 set protocols ospf interface eth{{ $idx }} retransmit-interval {{ $node.Network.OSPF.RetransmissionInterval }}
             {{- end }}
         {{- end }}
+set firewall zone {{ $iface.VLAN }} member interface eth{{ $idx }}
+set firewall zone {{ $iface.VLAN }} description 'Zone for interface eth{{ $idx }}, VLAN {{ $iface.VLAN }}'
         {{- if $iface.RulesetIn }}
-            {{- range $ruleset := $node.Network.Rulesets }}
-                {{- if eq $iface.RulesetIn $ruleset.Name }}
-                    {{- range $rule := $ruleset.Rules }}
-set firewall ipv4 name {{ $iface.RulesetIn }} rule {{ $rule.ID }} inbound-interface name eth{{ $idx }}
-                    {{- end }}
+            {{- range $jdx, $jface := $node.Network.Interfaces }}
+                {{- if ne $idx $jdx }}
+set firewall zone {{ $iface.VLAN }} from {{ $jface.VLAN }} firewall name {{ $iface.RulesetIn }}
                 {{- end }}
             {{- end }}
         {{- end }}
         {{- if $iface.RulesetOut }}
-            {{- range $ruleset := $node.Network.Rulesets }}
-                {{- if eq $iface.RulesetOut $ruleset.Name }}
-                    {{- range $rule := $ruleset.Rules }}
-set firewall ipv4 name {{ $iface.RulesetOut }} rule {{ $rule.ID }} outbound-interface name eth{{ $idx }}
-                    {{- end }}
+            {{- range $jdx, $jface := $node.Network.Interfaces }}
+                {{- if ne $idx $jdx }}
+set firewall zone {{ $jface.VLAN }} from {{ $iface.VLAN }} firewall name {{ $iface.RulesetOut }}
                 {{- end }}
             {{- end }}
         {{- end }}
