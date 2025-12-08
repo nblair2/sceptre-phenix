@@ -5,7 +5,7 @@ on:
   repository_dispatch:
     types: [apps-update]
 env:
-  MM_REV: e8ce6d1
+  MM_REV: aecea71
 jobs:
   push-to-ghcr:
     name: Push phenix Docker image to GitHub Packages
