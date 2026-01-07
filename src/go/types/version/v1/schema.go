@@ -224,6 +224,8 @@ components:
             hostname:
               type: string
               minLength: 1
+              maxLength: 63
+              pattern: '^[a-zA-Z0-9](?:[a-zA-Z0-9-]*[a-zA-Z0-9])?$'
               example: ADServer
             description:
               type: string
