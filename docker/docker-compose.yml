@@ -63,6 +63,7 @@ services:
       MM_CONTEXT: ${CONTEXT:-phenix}
       MM_LOGLEVEL: info
       MM_LOGFILE: /var/log/phenix/minimega.log
+      MM_ABSSNAPSHOT: true # needed for phenix VM backing image and snapshot functions
   es:
     image: elasticsearch:7.17.5
     container_name: es
