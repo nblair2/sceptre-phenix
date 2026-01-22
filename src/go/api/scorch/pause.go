@@ -3,6 +3,7 @@ package scorch
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"time"
 
 	"phenix/util"
@@ -13,16 +14,43 @@ import (
 )
 
 type PauseMetadata struct {
-	Duration   string   `mapstructure:"duration"`
-	FailStages []string `mapstructure:"failStages"`
+	Duration   *time.Duration `mapstructure:"duration"`
+	Minimum    *time.Duration `mapstructure:"minimum"`
+	Maximum    *time.Duration `mapstructure:"maximum"`
+	FailStages []string       `mapstructure:"failStages"`
 }
 
 func (this *PauseMetadata) Validate() error {
-	if this.Duration == "" {
-		this.Duration = "10s"
+	if this.Maximum != nil {
+		if this.Duration != nil {
+			return fmt.Errorf("cannot specify both duration and maximum")
+		}
+
+		minimum := time.Duration(0)
+		if this.Minimum != nil {
+			minimum = *this.Minimum
+		}
+
+		diff := *this.Maximum - minimum
+		if diff <= 0 {
+			return fmt.Errorf("maximum must be greater than minimum")
+		}
+
+		d := minimum + time.Duration(rand.Int64N(int64(diff)))
+		this.Duration = &d
+		return nil
 	}
 
-	return nil
+	if this.Duration == nil {
+		if this.Minimum != nil {
+			return fmt.Errorf("cannot specify both duration and minimum")
+		}
+		d := 10 * time.Second
+		this.Duration = &d
+		return nil
+	}
+
+	return fmt.Errorf("must specify duration or maximum. If maximum is specified, minimum is optional")
 }
 
 type Pause struct {
@@ -81,7 +109,15 @@ func (this Pause) pause(ctx context.Context, stage Action) error {
 
 	var md PauseMetadata
 
-	if err := mapstructure.Decode(this.options.Meta, &md); err != nil {
+	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
+		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
+		Result:     &md,
+	})
+	if err != nil {
+		return fmt.Errorf("creating decoder: %w", err)
+	}
+
+	if err := decoder.Decode(this.options.Meta); err != nil {
 		return fmt.Errorf("decoding pause component metadata: %w", err)
 	}
 
@@ -89,13 +125,8 @@ func (this Pause) pause(ctx context.Context, stage Action) error {
 		return fmt.Errorf("validating pause component metadata: %w", err)
 	}
 
-	d, err := time.ParseDuration(md.Duration)
-	if err != nil {
-		return fmt.Errorf("invalid duration provided for pause component: %w", err)
-	}
-
 	printer := color.New(color.FgYellow)
-	printer.Printf("pausing for %v\n", d)
+	printer.Printf("pausing for %v\n", *md.Duration)
 
 	update := scorch.ComponentUpdate{
 		Exp:     this.options.Exp.Spec.ExperimentName(),
@@ -110,13 +141,15 @@ func (this Pause) pause(ctx context.Context, stage Action) error {
 
 	start := time.Now()
 
-	for time.Since(start) < d {
+	i := 1
+	for time.Since(start) < *md.Duration {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(1 * time.Second):
-			update.Output = []byte("pausing...\n")
+			update.Output = []byte(fmt.Sprintf("pausing... (%ds / %v)\n", i, *md.Duration))
 			scorch.UpdateComponent(update)
+			i++
 		}
 	}
 
