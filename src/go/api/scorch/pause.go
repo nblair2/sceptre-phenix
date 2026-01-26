@@ -13,44 +13,113 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
+type UniformMetadata struct {
+	Minimum *time.Duration `mapstructure:"minimum"`
+	Maximum *time.Duration `mapstructure:"maximum"`
+}
+
+type GaussianMetadata struct {
+	Mean   *time.Duration `mapstructure:"mean"`
+	StdDev *time.Duration `mapstructure:"stddev"`
+}
+
+type ExponentialMetadata struct {
+	Mean *time.Duration `mapstructure:"mean"`
+}
+
+type RandomMetadata struct {
+	Uniform     *UniformMetadata     `mapstructure:"uniform"`
+	Gaussian    *GaussianMetadata    `mapstructure:"gaussian"`
+	Exponential *ExponentialMetadata `mapstructure:"exponential"`
+}
+
+func (r *RandomMetadata) Generate() (time.Duration, error) {
+	// Check for multiple distributions defined
+	count := 0
+	if r.Uniform != nil {
+		count++
+	}
+	if r.Gaussian != nil {
+		count++
+	}
+	if r.Exponential != nil {
+		count++
+	}
+	if count > 1 {
+		return 0, fmt.Errorf("cannot specify multiple distributions (uniform, gaussian, exponential)")
+	}
+
+	if r.Gaussian != nil {
+		mean := 10 * time.Second
+		stddev := 2 * time.Second
+		if r.Gaussian.Mean != nil {
+			mean = *r.Gaussian.Mean
+		}
+		if r.Gaussian.StdDev != nil {
+			stddev = *r.Gaussian.StdDev
+		}
+
+		val := rand.NormFloat64()*float64(stddev) + float64(mean)
+		if val < 0 {
+			val = 0
+		}
+		return time.Duration(val), nil
+	}
+
+	if r.Exponential != nil {
+		mean := 10 * time.Second
+		if r.Exponential.Mean != nil {
+			mean = *r.Exponential.Mean
+		}
+		return time.Duration(rand.ExpFloat64() * float64(mean)), nil
+	}
+
+	// Default to Uniform
+	min := time.Duration(0)
+	max := 10 * time.Second
+	if r.Uniform != nil {
+		if r.Uniform.Minimum != nil {
+			min = *r.Uniform.Minimum
+		}
+		if r.Uniform.Maximum != nil {
+			max = *r.Uniform.Maximum
+		}
+	}
+
+	if max <= min {
+		return 0, fmt.Errorf("maximum must be greater than minimum")
+	}
+
+	return min + time.Duration(rand.Float64()*float64(max-min)), nil
+}
+
 type PauseMetadata struct {
-	Duration   *time.Duration `mapstructure:"duration"`
-	Minimum    *time.Duration `mapstructure:"minimum"`
-	Maximum    *time.Duration `mapstructure:"maximum"`
-	FailStages []string       `mapstructure:"failStages"`
+	Duration   *time.Duration  `mapstructure:"duration"`
+	Random     *RandomMetadata `mapstructure:"random"`
+	FailStages []string        `mapstructure:"failStages"`
 }
 
 func (this *PauseMetadata) Validate() error {
-	if this.Maximum != nil {
-		if this.Duration != nil {
-			return fmt.Errorf("cannot specify both duration and maximum")
-		}
+	if this.Duration != nil && this.Random != nil {
+		return fmt.Errorf("cannot specify both duration and random")
+	}
 
-		minimum := time.Duration(0)
-		if this.Minimum != nil {
-			minimum = *this.Minimum
-		}
+	if this.Duration != nil {
+		return nil
+	}
 
-		diff := *this.Maximum - minimum
-		if diff <= 0 {
-			return fmt.Errorf("maximum must be greater than minimum")
+	if this.Random != nil {
+		d, err := this.Random.Generate()
+		if err != nil {
+			return err
 		}
-
-		d := minimum + time.Duration(rand.Int64N(int64(diff)))
 		this.Duration = &d
 		return nil
 	}
 
-	if this.Duration == nil {
-		if this.Minimum != nil {
-			return fmt.Errorf("cannot specify both duration and minimum")
-		}
-		d := 10 * time.Second
-		this.Duration = &d
-		return nil
-	}
-
-	return fmt.Errorf("must specify duration or maximum. If maximum is specified, minimum is optional")
+	d := 10 * time.Second
+	this.Duration = &d
+	return nil
 }
 
 type Pause struct {
