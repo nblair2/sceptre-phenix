@@ -126,14 +126,15 @@ func (this ScorchMetadata) UseExpNameAsIndexName(id int) bool {
 }
 
 type Loop struct {
-	Filebeat  *FilebeatSpec `mapstructure:"filebeat"`
-	Count     int           `mapstructure:"count"`
-	Name      string        `mapstructure:"name"`
-	Configure []string      `mapstructure:"configure"`
-	Start     []string      `mapstructure:"start"`
-	Stop      []string      `mapstructure:"stop"`
-	Cleanup   []string      `mapstructure:"cleanup"`
-	Loop      *Loop         `mapstructure:"loop"` // using a pointer here to avoid cyclical references
+	Filebeat  *FilebeatSpec  `mapstructure:"filebeat"`
+	Count     int            `mapstructure:"count"`
+	Name      string         `mapstructure:"name"`
+	Replace   map[string]any `mapstructure:"replace"`
+	Configure []string       `mapstructure:"configure"`
+	Start     []string       `mapstructure:"start"`
+	Stop      []string       `mapstructure:"stop"`
+	Cleanup   []string       `mapstructure:"cleanup"`
+	Loop      *Loop          `mapstructure:"loop"` // using a pointer here to avoid cyclical references
 }
 
 func (this Loop) ContainsComponent(name string) bool {

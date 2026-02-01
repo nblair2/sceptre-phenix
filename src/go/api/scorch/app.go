@@ -382,6 +382,17 @@ func (this Scorch) recordInfo(runID int, runDir string, md store.ConfigMetadata,
 func executor(ctx context.Context, components scorchmd.ComponentSpecMap, exe *scorchmd.Loop, opts ...Option) error {
 	options := NewOptions(opts...)
 
+	loopReplacements, err := scorchmd.ResolveReplacements(exe.Replace)
+	if err != nil {
+		return fmt.Errorf("resolving replacements: %w", err)
+	}
+
+	mergedReplacements := scorchmd.MergeReplacements(options.Replacements, loopReplacements)
+	plog.Info(plog.TypePhenixApp, "Resolved replacements for Scorch loop", "run_id", options.Run, "loop_idx", options.Loop, "replacements", mergedReplacements, "app", "scorch")
+
+	options.Replacements = mergedReplacements
+	opts = append(opts, Replacements(mergedReplacements))
+
 	var (
 		exp        = options.Exp.Spec.ExperimentName()
 		loopPrefix = fmt.Sprintf("[RUN: %d - LOOP: %d - COUNT: %d]", options.Run, options.Loop, options.Count)
@@ -402,128 +413,10 @@ func executor(ctx context.Context, components scorchmd.ComponentSpecMap, exe *sc
 
 	logger.Info("starting scorch", "run", loopPrefix)
 
-	configure := func() error {
-		update.Stage = string(ACTIONCONFIG)
+	runStage := func(stage Action, names []string, failFast bool) error {
+		update.Stage = string(stage)
 
-		if len(exe.Configure) == 0 {
-			update.CmpType = ""
-			update.CmpName = ""
-			update.Status = "success"
-			scorch.UpdatePipeline(update)
-			return nil
-		}
-
-		logger.Info("running scorch configure stage")
-
-		for _, name := range exe.Configure {
-			typ := components[name].Type
-
-			update.CmpType = typ
-			update.CmpName = name
-			update.Status = "start"
-
-			scorch.UpdateComponent(update)
-
-			options := append(opts, Name(name), Type(typ), Stage(ACTIONCONFIG), Metadata(components[name].Metadata))
-
-			status := "running"
-
-			if components[name].Background {
-				options = append(options, Background())
-				status = "background"
-			}
-
-			update.Status = status
-			scorch.UpdateComponent(update)
-			scorch.UpdatePipeline(update)
-
-			logger.Debug("running scorch configure stage component", "component", name)
-
-			if err := ExecuteComponent(ctx, options...); err != nil {
-				update.Status = "failure"
-				scorch.UpdateComponent(update)
-				scorch.UpdatePipeline(update)
-
-				logger.Error("[✗] failed scorch configure stage component", "component", name, "err", err)
-
-				return fmt.Errorf("%s configuring component %s for experiment %s: %w", loopPrefix, name, exp, err)
-			}
-
-			if !components[name].Background {
-				update.Status = "success"
-				scorch.UpdateComponent(update)
-				scorch.UpdatePipeline(update)
-
-				logger.Debug("[✓] completed scorch configure stage component", "component", name)
-			}
-		}
-
-		return nil
-	}
-
-	start := func() error {
-		update.Stage = string(ACTIONSTART)
-
-		if len(exe.Start) == 0 {
-			update.CmpType = ""
-			update.CmpName = ""
-			update.Status = "success"
-			scorch.UpdatePipeline(update)
-			return nil
-		}
-
-		logger.Info("running scorch start stage")
-
-		for _, name := range exe.Start {
-			typ := components[name].Type
-
-			update.CmpType = typ
-			update.CmpName = name
-			update.Status = "start"
-
-			scorch.UpdateComponent(update)
-
-			options := append(opts, Name(name), Type(typ), Stage(ACTIONSTART), Metadata(components[name].Metadata))
-
-			status := "running"
-
-			if components[name].Background {
-				options = append(options, Background())
-				status = "background"
-			}
-
-			update.Status = status
-			scorch.UpdateComponent(update)
-			scorch.UpdatePipeline(update)
-
-			logger.Debug("running scorch start stage component", "component", name)
-
-			if err := ExecuteComponent(ctx, options...); err != nil {
-				update.Status = "failure"
-				scorch.UpdateComponent(update)
-				scorch.UpdatePipeline(update)
-
-				logger.Error("[✗] failed scorch start stage component", "component", name, "err", err)
-
-				return fmt.Errorf("%s starting component %s for experiment %s: %w", loopPrefix, name, exp, err)
-			}
-
-			if !components[name].Background {
-				update.Status = "success"
-				scorch.UpdateComponent(update)
-				scorch.UpdatePipeline(update)
-
-				logger.Debug("[✓] completed scorch start stage component", "component", name)
-			}
-		}
-
-		return nil
-	}
-
-	stop := func() error {
-		update.Stage = string(ACTIONSTOP)
-
-		if len(exe.Stop) == 0 {
+		if len(names) == 0 {
 			update.CmpType = ""
 			update.CmpName = ""
 			update.Status = "success"
@@ -533,9 +426,9 @@ func executor(ctx context.Context, components scorchmd.ComponentSpecMap, exe *sc
 
 		var errors error
 
-		logger.Info("running scorch stop stage")
+		logger.Info("running scorch stage", "stage", stage)
 
-		for _, name := range exe.Stop {
+		for _, name := range names {
 			typ := components[name].Type
 
 			update.CmpType = typ
@@ -544,86 +437,51 @@ func executor(ctx context.Context, components scorchmd.ComponentSpecMap, exe *sc
 
 			scorch.UpdateComponent(update)
 
-			options := append(opts, Name(name), Type(typ), Stage(ACTIONSTOP), Metadata(components[name].Metadata))
+			meta := scorchmd.ApplyReplacements(components[name].Metadata, options.Replacements)
+			cmpOpts := append(opts, Name(name), Type(typ), Stage(stage), Metadata(meta))
 
-			update.Status = "running"
+			status := "running"
+
+			if components[name].Background && failFast {
+				cmpOpts = append(cmpOpts, Background())
+				status = "background"
+			}
+
+			update.Status = status
 			scorch.UpdateComponent(update)
 			scorch.UpdatePipeline(update)
 
-			logger.Debug("running stop stage component", "component", name)
+			logger.Debug("running scorch stage component", "stage", stage, "component", name)
 
-			if err := ExecuteComponent(ctx, options...); err != nil {
+			if err := ExecuteComponent(ctx, cmpOpts...); err != nil {
 				update.Status = "failure"
 				scorch.UpdateComponent(update)
 				scorch.UpdatePipeline(update)
 
-				logger.Error("[✗] failed scorch stop stage component", "component", name, "err", err)
+				logger.Error("[✗] failed scorch stage component", "stage", stage, "component", name, "err", err)
 
-				errors = multierror.Append(errors, fmt.Errorf("%s stopping component %s for experiment %s: %w", loopPrefix, name, exp, err))
-			} else {
+				err = fmt.Errorf("%s %s component %s for experiment %s: %w", loopPrefix, stage, name, exp, err)
+
+				if failFast {
+					return err
+				}
+				errors = multierror.Append(errors, err)
+			} else if !components[name].Background || !failFast {
 				update.Status = "success"
 				scorch.UpdateComponent(update)
 				scorch.UpdatePipeline(update)
 
-				logger.Debug("[✓] completed scorch stop stage component", "component", name)
+				logger.Debug("[✓] completed scorch stage component", "stage", stage, "component", name)
 			}
 		}
 
 		return errors
 	}
 
-	cleanup := func() error {
-		update.Stage = string(ACTIONCLEANUP)
-
-		if len(exe.Cleanup) == 0 {
-			update.CmpType = ""
-			update.CmpName = ""
-			update.Status = "success"
-			scorch.UpdatePipeline(update)
-			return nil
-		}
-
-		var errors error
-
-		logger.Info("running scorch cleanup stage")
-
-		for _, name := range exe.Cleanup {
-			typ := components[name].Type
-
-			update.CmpType = typ
-			update.CmpName = name
-			update.Status = "start"
-
-			scorch.UpdateComponent(update)
-
-			options := append(opts, Name(name), Type(typ), Stage(ACTIONCLEANUP), Metadata(components[name].Metadata))
-
-			update.Status = "running"
-			scorch.UpdateComponent(update)
-			scorch.UpdatePipeline(update)
-
-			logger.Debug("running cleanup stage component", "component", name)
-
-			err := ExecuteComponent(ctx, options...)
-			if err != nil {
-				update.Status = "failure"
-				scorch.UpdateComponent(update)
-				scorch.UpdatePipeline(update)
-
-				logger.Error("[✗] failed scorch cleanup stage component", "component", name, "err", err)
-
-				errors = multierror.Append(errors, fmt.Errorf("%s cleaning up component %s for experiment %s: %w", loopPrefix, name, exp, err))
-			} else {
-				update.Status = "success"
-				scorch.UpdateComponent(update)
-				scorch.UpdatePipeline(update)
-
-				logger.Debug("[✓] completed scorch cleanup stage component", "component", name)
-			}
-		}
-
-		return errors
-	}
+	configure := func() error { return runStage(ACTIONCONFIG, exe.Configure, true) }
+	start := func() error { return runStage(ACTIONSTART, exe.Start, true) }
+	stop := func() error { return runStage(ACTIONSTOP, exe.Stop, false) }
+	cleanup := func() error { return runStage(ACTIONCLEANUP, exe.Cleanup, false) }
 
 	if err := configure(); err != nil {
 		errors := multierror.Append(nil, err)

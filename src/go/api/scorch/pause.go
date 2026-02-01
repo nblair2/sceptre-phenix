@@ -3,7 +3,6 @@ package scorch
 import (
 	"context"
 	"fmt"
-	"math/rand/v2"
 	"time"
 
 	"phenix/util"
@@ -13,112 +12,16 @@ import (
 	"github.com/mitchellh/mapstructure"
 )
 
-type UniformMetadata struct {
-	Minimum *time.Duration `mapstructure:"minimum"`
-	Maximum *time.Duration `mapstructure:"maximum"`
-}
-
-type GaussianMetadata struct {
-	Mean   *time.Duration `mapstructure:"mean"`
-	StdDev *time.Duration `mapstructure:"stddev"`
-}
-
-type ExponentialMetadata struct {
-	Mean *time.Duration `mapstructure:"mean"`
-}
-
-type RandomMetadata struct {
-	Uniform     *UniformMetadata     `mapstructure:"uniform"`
-	Gaussian    *GaussianMetadata    `mapstructure:"gaussian"`
-	Exponential *ExponentialMetadata `mapstructure:"exponential"`
-}
-
-func (r *RandomMetadata) Generate() (time.Duration, error) {
-	// Check for multiple distributions defined
-	count := 0
-	if r.Uniform != nil {
-		count++
-	}
-	if r.Gaussian != nil {
-		count++
-	}
-	if r.Exponential != nil {
-		count++
-	}
-	if count > 1 {
-		return 0, fmt.Errorf("cannot specify multiple distributions (uniform, gaussian, exponential)")
-	}
-
-	if r.Gaussian != nil {
-		mean := 10 * time.Second
-		stddev := 2 * time.Second
-		if r.Gaussian.Mean != nil {
-			mean = *r.Gaussian.Mean
-		}
-		if r.Gaussian.StdDev != nil {
-			stddev = *r.Gaussian.StdDev
-		}
-
-		val := rand.NormFloat64()*float64(stddev) + float64(mean)
-		if val < 0 {
-			val = 0
-		}
-		return time.Duration(val), nil
-	}
-
-	if r.Exponential != nil {
-		mean := 10 * time.Second
-		if r.Exponential.Mean != nil {
-			mean = *r.Exponential.Mean
-		}
-		return time.Duration(rand.ExpFloat64() * float64(mean)), nil
-	}
-
-	// Default to Uniform
-	min := time.Duration(0)
-	max := 10 * time.Second
-	if r.Uniform != nil {
-		if r.Uniform.Minimum != nil {
-			min = *r.Uniform.Minimum
-		}
-		if r.Uniform.Maximum != nil {
-			max = *r.Uniform.Maximum
-		}
-	}
-
-	if max <= min {
-		return 0, fmt.Errorf("maximum must be greater than minimum")
-	}
-
-	return min + time.Duration(rand.Float64()*float64(max-min)), nil
-}
-
 type PauseMetadata struct {
-	Duration   *time.Duration  `mapstructure:"duration"`
-	Random     *RandomMetadata `mapstructure:"random"`
-	FailStages []string        `mapstructure:"failStages"`
+	Duration   string   `mapstructure:"duration"`
+	FailStages []string `mapstructure:"failStages"`
 }
 
 func (this *PauseMetadata) Validate() error {
-	if this.Duration != nil && this.Random != nil {
-		return fmt.Errorf("cannot specify both duration and random")
+	if this.Duration == "" {
+		this.Duration = "10s"
 	}
 
-	if this.Duration != nil {
-		return nil
-	}
-
-	if this.Random != nil {
-		d, err := this.Random.Generate()
-		if err != nil {
-			return err
-		}
-		this.Duration = &d
-		return nil
-	}
-
-	d := 10 * time.Second
-	this.Duration = &d
 	return nil
 }
 
@@ -178,15 +81,7 @@ func (this Pause) pause(ctx context.Context, stage Action) error {
 
 	var md PauseMetadata
 
-	decoder, err := mapstructure.NewDecoder(&mapstructure.DecoderConfig{
-		DecodeHook: mapstructure.StringToTimeDurationHookFunc(),
-		Result:     &md,
-	})
-	if err != nil {
-		return fmt.Errorf("creating decoder: %w", err)
-	}
-
-	if err := decoder.Decode(this.options.Meta); err != nil {
+	if err := mapstructure.Decode(this.options.Meta, &md); err != nil {
 		return fmt.Errorf("decoding pause component metadata: %w", err)
 	}
 
@@ -194,8 +89,13 @@ func (this Pause) pause(ctx context.Context, stage Action) error {
 		return fmt.Errorf("validating pause component metadata: %w", err)
 	}
 
+	d, err := time.ParseDuration(md.Duration)
+	if err != nil {
+		return fmt.Errorf("invalid duration provided for pause component: %w", err)
+	}
+
 	printer := color.New(color.FgYellow)
-	printer.Printf("pausing for %v\n", *md.Duration)
+	printer.Printf("pausing for %v\n", d)
 
 	update := scorch.ComponentUpdate{
 		Exp:     this.options.Exp.Spec.ExperimentName(),
@@ -210,15 +110,13 @@ func (this Pause) pause(ctx context.Context, stage Action) error {
 
 	start := time.Now()
 
-	i := 1
-	for time.Since(start) < *md.Duration {
+	for time.Since(start) < d {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-time.After(1 * time.Second):
-			update.Output = []byte(fmt.Sprintf("pausing... (%ds / %v)\n", i, *md.Duration))
+			update.Output = []byte("pausing...\n")
 			scorch.UpdateComponent(update)
-			i++
 		}
 	}
 

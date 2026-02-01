@@ -11,16 +11,17 @@ type Option func(*Options)
 
 // Options represents a set of options generic to all components.
 type Options struct {
-	Stage      Action
-	Type       string // used to set the component type
-	Name       string
-	Exp        types.Experiment
-	Meta       scorchmd.ComponentMetadata
-	StartTime  string
-	Run        int
-	Loop       int
-	Count      int
-	Background bool
+	Stage        Action
+	Type         string // used to set the component type
+	Name         string
+	Exp          types.Experiment
+	Meta         scorchmd.ComponentMetadata
+	StartTime    string
+	Run          int
+	Loop         int
+	Count        int
+	Background   bool
+	Replacements scorchmd.ResolvedReplacements
 }
 
 // NewOptions returns an Options struct initialized with the given option list.
@@ -101,5 +102,12 @@ func LoopCount(c int) Option {
 func Background() Option {
 	return func(o *Options) {
 		o.Background = true
+	}
+}
+
+// Replacements sets the resolved replacements for the component.
+func Replacements(r scorchmd.ResolvedReplacements) Option {
+	return func(o *Options) {
+		o.Replacements = r
 	}
 }

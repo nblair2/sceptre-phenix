@@ -66,7 +66,53 @@ func (this UserComponent) shellOut(ctx context.Context, stage Action) error {
 		return fmt.Errorf("external user component %s does not exist in your path: %w", cmd, ErrUserComponentNotFound)
 	}
 
-	data, err := json.Marshal(this.options.Exp)
+	// Need to unmarshal the experiment, apply replacements, and then marshal before sending to component
+	blob, err := json.Marshal(this.options.Exp)
+	if err != nil {
+		return fmt.Errorf("marshaling experiment: %w", err)
+	}
+
+	var generic map[string]any
+	if err := json.Unmarshal(blob, &generic); err != nil {
+		return fmt.Errorf("unmarshaling experiment to generic map: %w", err)
+	}
+
+	if spec, ok := generic["spec"].(map[string]any); ok {
+		if scenario, ok := spec["scenario"].(map[string]any); ok {
+			if apps, ok := scenario["apps"].([]any); ok {
+				for _, a := range apps {
+					appMap, ok := a.(map[string]any)
+					if !ok {
+						continue
+					}
+
+					meta, ok := appMap["metadata"].(map[string]any)
+					if !ok {
+						continue
+					}
+
+					cmps, ok := meta["components"].([]any)
+					if !ok {
+						continue
+					}
+
+					for _, c := range cmps {
+						cmpMap, ok := c.(map[string]any)
+						if !ok {
+							continue
+						}
+
+						if name, ok := cmpMap["name"].(string); ok && name == this.options.Name {
+							cmpMap["metadata"] = this.options.Meta
+							break
+						}
+					}
+				}
+			}
+		}
+	}
+
+	data, err := json.Marshal(generic)
 	if err != nil {
 		return fmt.Errorf("marshaling experiment metadata to JSON: %w", err)
 	}
@@ -129,20 +175,19 @@ func (this UserComponent) run(ctx context.Context, stage Action, cmd string, dat
 	if err != nil {
 		plog.Warn(plog.TypeScorch, "component returned stderr", "stderr", string(stderrBytes), "component", this.options.Name, "stage", stage, "exp", this.options.Exp.Spec.ExperimentName())
 
-
 		return fmt.Errorf("external user component %s (command %s) failed: %w", this.options.Type, cmd, err)
 	}
 
 	if len(stdoutBytes) != 0 {
-		plog.Info(plog.TypePhenixApp, string(stdoutBytes), 
-				"experiment", this.options.Exp.Spec.ExperimentName(),
-				"app", "scorch",
-				"component", this.options.Name,
-				"stage", string(stage),
-				"run", strconv.Itoa(this.options.Run),
-				"loop", strconv.Itoa(this.options.Loop),
-				"count", strconv.Itoa(this.options.Count),
-			)
+		plog.Info(plog.TypePhenixApp, string(stdoutBytes),
+			"experiment", this.options.Exp.Spec.ExperimentName(),
+			"app", "scorch",
+			"component", this.options.Name,
+			"stage", string(stage),
+			"run", strconv.Itoa(this.options.Run),
+			"loop", strconv.Itoa(this.options.Loop),
+			"count", strconv.Itoa(this.options.Count),
+		)
 	}
 
 	return nil

@@ -56,7 +56,7 @@ func ExampleExecuteLoop() {
 		components[c.Name] = c
 	}
 
-	if err := executor(context.Background(), components, md.Execute); err != nil {
+	if err := executor(context.Background(), components, md.Runs[0]); err != nil {
 		fmt.Println(err)
 		return
 	}
