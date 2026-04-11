@@ -13,9 +13,6 @@ import (
 	"phenix/types"
 )
 
-const osWindows = "windows"
-const osLinux = "linux"
-
 type NTPAppMetadata struct {
 	DefaultSource NTPAppSource `mapstructure:"defaultSource"`
 }
@@ -69,7 +66,7 @@ func (NTP) Configure(ctx context.Context, exp *types.Experiment) error {
 	return nil
 }
 
-//nolint:cyclop,funlen // complex logic
+//nolint:cyclop,funlen,gocyclo,maintidx // complex logic
 func (NTP) PreStart(ctx context.Context, exp *types.Experiment) error {
 	var (
 		ntpDir  = exp.Spec.BaseDir() + "/ntp"
@@ -131,6 +128,19 @@ func (NTP) PreStart(ctx context.Context, exp *types.Experiment) error {
 							}
 
 							node.AddInject(cfg, "/etc/ntp.conf", "", "")
+
+						case "chrony":
+							err := tmpl.CreateFileFromTemplate("chrony_linux.tmpl", source, cfg)
+							if err != nil {
+								return fmt.Errorf(
+									"generating NTP client config for host %s: %w",
+									host.Hostname(),
+									err,
+								)
+							}
+
+							node.AddInject(cfg, "/etc/chrony/chrony.conf", "", "")
+
 						case "systemd":
 							err := tmpl.CreateFileFromTemplate(
 								"systemd-timesyncd.tmpl",
@@ -146,7 +156,8 @@ func (NTP) PreStart(ctx context.Context, exp *types.Experiment) error {
 							}
 
 							node.AddInject(cfg, "/etc/systemd/timesyncd.conf", "", "")
-						case "windows":
+
+						case osWindows:
 							err := tmpl.CreateFileFromTemplate("ntp_windows.tmpl", source, cfg)
 							if err != nil {
 								return fmt.Errorf(
@@ -168,12 +179,12 @@ func (NTP) PreStart(ctx context.Context, exp *types.Experiment) error {
 						continue
 					}
 
+					// It's okay if `source` is an empty string here. If it is, the
+					// template will generate a config for the NTP server that prefers
+					// the host's clock as the source.
 					if hmd.Server != "" {
 						switch strings.ToLower(hmd.Server) {
 						case "ntpd":
-							// It's okay if `source` is an empty string here. If it is, the
-							// template will generate a config for the NTP server that prefers
-							// the host's clock as the source.
 							err := tmpl.CreateFileFromTemplate("ntp_linux.tmpl", source, cfg)
 							if err != nil {
 								return fmt.Errorf(
@@ -184,6 +195,20 @@ func (NTP) PreStart(ctx context.Context, exp *types.Experiment) error {
 							}
 
 							node.AddInject(cfg, "/etc/ntp.conf", "", "")
+
+						case "chronyd":
+							err := tmpl.CreateFileFromTemplate("chrony_linux.tmpl", source, cfg)
+							if err != nil {
+								return fmt.Errorf(
+									"generating NTP server config for host %s: %w",
+									host.Hostname(),
+									err,
+								)
+							}
+
+							// default chrony config for Debian, Ubuntu. Other distros may use /etc/chrony.conf
+							node.AddInject(cfg, "/etc/chrony/chrony.conf", "", "")
+
 						default:
 							return fmt.Errorf(
 								"unknown NTP server type %s provided for host %s",
@@ -257,7 +282,7 @@ func (NTP) PreStart(ctx context.Context, exp *types.Experiment) error {
 			}
 
 			node.AddInject(ntpFile, "/etc/ntp.conf", "", "")
-		case "windows":
+		case osWindows:
 			err := tmpl.CreateFileFromTemplate("ntp_windows.tmpl", serverAddr, ntpFile)
 			if err != nil {
 				return fmt.Errorf("generating Windows NTP script: %w", err)

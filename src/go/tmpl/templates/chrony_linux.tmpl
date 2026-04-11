@@ -1,0 +1,24 @@
+# /etc/chrony/chrony.conf, configuration for chronyd; see chrony.conf(5) for help
+
+driftfile /var/lib/chrony/chrony.drift
+
+# Step the system clock on the first three updates if the offset exceeds 1s.
+makestep 1.0 3
+
+# Enable kernel synchronization of the real-time clock (RTC).
+rtcsync
+
+# Specify directory for log files.
+logdir /var/log/chrony
+
+# Specify one or more NTP servers.
+
+{{ if . -}}
+server {{ . }} iburst prefer
+{{- else -}}
+# No upstream source; use local clock as time reference.
+local stratum 10
+{{- end }}
+
+# Allow NTP clients to access this server.
+allow all

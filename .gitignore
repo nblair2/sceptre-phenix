@@ -38,6 +38,7 @@ src/go/bindata.go
 src/go/mock.go
 src/go/known_policy.go
 src/go/web/public/
+src/go/coverage.out
 
 # JS specific
 src/js/node_modules/

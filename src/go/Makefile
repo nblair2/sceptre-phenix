@@ -84,7 +84,8 @@ lint-clean:
 
 test:
 	$(call check-command,go,Please install Go 1.24+ (https://go.dev/doc/install))
-	go test -v ./...
+	go test -v -race -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out
 
 clean: lint-clean
 	$(RM) bin/phenix
