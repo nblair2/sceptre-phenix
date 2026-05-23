@@ -19,7 +19,6 @@ import (
 	"phenix/types"
 	ifaces "phenix/types/interfaces"
 	"phenix/types/version"
-	"phenix/util/common"
 	"phenix/util/mm"
 	"phenix/util/plog"
 )
@@ -1549,16 +1548,20 @@ func (s SOH) customTest( //nolint:funlen // complex logic
 	}
 
 	// All three paths below must agree on the same minimega-relative path
-	// (<ns>/<script>): the file is written under minimega's files directory
-	// (PhenixBase/images), `cc send` resolves it relative to that directory and
-	// delivers it to the VM preserving the relative path (so it lands at
+	// (<ns>/<script>): the file is written under minimega's files directory,
+	// `cc send` resolves it relative to that same directory and delivers it to
+	// the VM preserving the relative path (so it lands at
 	// /tmp/miniccc/files/<ns>/<script>), and the executor must invoke it from
 	// that same location. Keeping these in sync via a single relPath avoids the
 	// mismatch where the file is delivered to the <ns>/ subdir but executed from
 	// the root, which makes every custom test fail.
+	//
+	// The write base is resolved from minimega's configured files directory
+	// (GetMMFullPath) rather than assuming PhenixBase/images, so it tracks
+	// whatever MM_FILEPATH the deployment uses.
 	relPath := fmt.Sprintf("%s/%s", ns, script)
 
-	path := fmt.Sprintf("%s/images/%s", common.PhenixBase, relPath)
+	path := mm.GetMMFullPath(relPath)
 
 	err := os.WriteFile(path, []byte(test.TestScript), 0o600)
 	if err != nil {
