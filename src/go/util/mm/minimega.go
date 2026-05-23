@@ -148,7 +148,20 @@ func (m Minimega) GetVMInfo(opts ...Option) VMs { //nolint:funlen // complex log
 	o := NewOptions(opts...)
 
 	// don't rely on `cc_active` column in `vm info` table
-	activeC2 := getActiveC2(o.ns)
+	activeC2, err := getActiveC2(o.ns)
+	if err != nil {
+		// A failed C2 lookup (e.g. a transient mesh error) shouldn't fail the
+		// whole VM listing; treat C2 state as unknown and log loudly. The
+		// authoritative readiness gate is IsC2ClientActive.
+		plog.Warn(
+			plog.TypeSystem,
+			"could not determine active C2 clients; assuming none",
+			"ns", o.ns,
+			"err", err,
+		)
+
+		activeC2 = map[string]bool{}
+	}
 
 	cmd := mmcli.NewNamespacedCommand(o.ns)
 	cmd.Command = vmInfoCmd
@@ -1056,7 +1069,28 @@ func (Minimega) IsC2ClientActive(opts ...C2Option) error {
 		case <-after:
 			return ErrC2ClientNotActive
 		default:
-			rows := mmcli.RunTabular(cmd)
+			rows, err := mmcli.RunTabularErr(cmd)
+			if err != nil {
+				if mmcli.IsTransientErr(err) {
+					// A swallowed transient mesh/connection error looks identical
+					// to "no client". Keep polling within the timeout budget
+					// instead of falsely concluding the client is not active --
+					// that false negative is what fails SOH on multi-node
+					// reservations.
+					plog.Warn(
+						plog.TypeSystem,
+						"transient error checking C2 client; retrying",
+						"vm", o.vm,
+						"err", err,
+					)
+
+					time.Sleep(c2ActiveCheckInterval)
+
+					continue
+				}
+
+				return fmt.Errorf("checking C2 client for %s: %w", o.vm, err)
+			}
 
 			if len(rows) != 0 {
 				return nil
@@ -1503,17 +1537,22 @@ func GetLocalMountPath(ns, vm string) string {
 	return filepath.Join(common.PhenixBase, "mounts", ns, vm)
 }
 
-func getActiveC2(ns string) map[string]bool {
+func getActiveC2(ns string) (map[string]bool, error) {
 	active := make(map[string]bool)
 
 	cmd := mmcli.NewNamespacedCommand(ns)
 	cmd.Command = "cc client"
 
-	for _, row := range mmcli.RunTabular(cmd) {
+	rows, err := mmcli.RunTabularErr(cmd)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, row := range rows {
 		active[row["uuid"]] = true
 	}
 
-	return active
+	return active, nil
 }
 
 func waitForResponse(ctx context.Context, ns, id string, timeout time.Duration) error {
@@ -1536,7 +1575,23 @@ func waitForResponse(ctx context.Context, ns, id string, timeout time.Duration) 
 		case <-after:
 			return fmt.Errorf("timeout waiting for response for command %s", id)
 		default:
-			rows := mmcli.RunTabular(cmd)
+			rows, err := mmcli.RunTabularErr(cmd)
+			if err != nil {
+				if mmcli.IsTransientErr(err) {
+					plog.Warn(
+						plog.TypeSystem,
+						"transient error waiting for C2 response; retrying",
+						"id", id,
+						"err", err,
+					)
+
+					time.Sleep(responseWaitInterval)
+
+					continue
+				}
+
+				return fmt.Errorf("waiting for response for command %s: %w", id, err)
+			}
 
 			if len(rows) == 0 {
 				return fmt.Errorf("no commands returned for ID %s", id)
