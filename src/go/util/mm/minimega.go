@@ -1575,10 +1575,12 @@ func waitForResponse(ctx context.Context, ns, id string, timeout time.Duration) 
 	cmd.Columns = []string{"id", "responses"}
 	cmd.Filters = []string{"id=" + id}
 
-	// Multiple rows will come back for each command ID, one row per cluster host.
-	// Because the `ExecC2Command` sets the filter to a specific VM, only one of
-	// the rows will have a response since a VM can only run on a single cluster
-	// host.
+	// On a multi-node cluster `cc commands` returns one row per cluster host.
+	// Because `ExecC2Command` sets the filter to a specific VM, only the host
+	// running that VM will report a response; the others report zero responses
+	// and a host that doesn't know the command may even return an error. So a
+	// valid row from any one host is sufficient, and a sibling host's error is
+	// noise unless no host returned a row at all.
 
 	after := time.After(timeout)
 
@@ -1590,37 +1592,26 @@ func waitForResponse(ctx context.Context, ns, id string, timeout time.Duration) 
 			return fmt.Errorf("timeout waiting for response for command %s", id)
 		default:
 			rows, err := mmcli.RunTabularErr(cmd)
-			if err != nil {
-				if mmcli.IsTransientErr(err) {
-					plog.Warn(
-						plog.TypeSystem,
-						"transient error waiting for C2 response; retrying",
-						"id", id,
-						"err", err,
-					)
 
-					time.Sleep(responseWaitInterval)
-
-					continue
-				}
-
+			// Only act on the error when no host returned a usable row -- a valid
+			// row elsewhere means the command exists and the error is just a
+			// sibling host that isn't running the VM.
+			if err != nil && len(rows) == 0 && !mmcli.IsTransientErr(err) {
 				return fmt.Errorf("waiting for response for command %s: %w", id, err)
 			}
 
-			if len(rows) == 0 {
-				return fmt.Errorf("no commands returned for ID %s", id)
-			}
-
-			if rid := rows[0]["id"]; rid != id {
-				return fmt.Errorf("wrong command returned: %s", rid)
-			}
-
 			for _, row := range rows {
-				if row["responses"] != "0" {
+				if row["id"] == id && row["responses"] != "0" {
 					return nil
 				}
 			}
 
+			// The command may not be visible in `cc commands` the instant after
+			// it's issued (id assignment vs. mesh propagation), and the response
+			// may not have arrived yet. Keep polling within the timeout instead of
+			// failing the moment the row or response is absent -- that race is
+			// what intermittently fails networking/reachability checks on
+			// multi-node reservations.
 			time.Sleep(responseWaitInterval)
 		}
 	}
