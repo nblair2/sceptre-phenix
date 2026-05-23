@@ -117,10 +117,11 @@ func (c *Command) retries() int {
 // partially-read response channel keeps the underlying miniclient connection
 // lock held, which would deadlock the next attempt.
 func runOnce(c *Command) (chan *miniclient.Response, error) {
-	var (
-		buf    []*miniclient.Response
-		errStr string
-	)
+	var errStr string
+
+	// Most commands return a single response; preallocate for that common case
+	// and let append grow it for multi-host (mesh) responses.
+	buf := make([]*miniclient.Response, 0, 1)
 
 	for resp := range Run(c) {
 		buf = append(buf, resp)
