@@ -264,7 +264,20 @@ func (m Minimega) GetVMInfo(opts ...Option) VMs { //nolint:funlen // complex log
 				cmd.Command = fmt.Sprintf("mesh send %s %s", row["host"], cmd.Command)
 			}
 
-			resp := mmcli.RunTabular(cmd)
+			// `disk info` is a read; retry transient mesh errors instead of
+			// silently falling back to the raw diskspec path (the flaky
+			// cross-mesh disk lookup behind focus1#1).
+			cmd.Retries = 3
+
+			resp, rerr := mmcli.RunTabularWithRetry(cmd)
+			if rerr != nil {
+				plog.Warn(
+					plog.TypeSystem,
+					"getting disk info; falling back to raw diskspec",
+					"vm", vm.Name,
+					"err", rerr,
+				)
+			}
 
 			if len(resp) == 0 {
 				vm.Disk = disk
@@ -825,8 +838,8 @@ func (Minimega) GetExperimentCaptures(opts ...Option) []Capture {
 		}
 
 		// `interface` column will be in the form of <vm_name>:<iface_idx>
-		iface := strings.SplitN(row["interface"], ":", 2)
-		if len(iface) != 2 {
+		vm, idxStr, ok := strings.Cut(row["interface"], ":")
+		if !ok {
 			plog.Warn(
 				plog.TypeSystem,
 				"unexpected capture interface format",
@@ -836,8 +849,7 @@ func (Minimega) GetExperimentCaptures(opts ...Option) []Capture {
 			continue
 		}
 
-		vm := iface[0]
-		idx, _ := strconv.Atoi(iface[1])
+		idx, _ := strconv.Atoi(idxStr)
 
 		capture := Capture{
 			VM:        vm,
@@ -1543,7 +1555,9 @@ func getActiveC2(ns string) (map[string]bool, error) {
 	cmd := mmcli.NewNamespacedCommand(ns)
 	cmd.Command = "cc client"
 
-	rows, err := mmcli.RunTabularErr(cmd)
+	// `cc client` is a read; retry transient mesh errors rather than reporting a
+	// spuriously empty set of active clients.
+	rows, err := mmcli.RunTabularWithRetry(cmd)
 	if err != nil {
 		return nil, err
 	}

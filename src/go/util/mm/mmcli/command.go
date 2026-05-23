@@ -15,6 +15,17 @@ type Command struct {
 	Filters   []string
 	Namespace string
 	Timeout   time.Duration
+
+	// Retries is the maximum number of times to retry the command when it fails
+	// with a transient error (see IsTransientErr). It only takes effect when the
+	// command is run through one of the *WithRetry helpers. A value <= 0 falls
+	// back to defaultRetries. Only set this on idempotent commands: retrying a
+	// non-idempotent command (e.g. `vm launch`) risks executing it more than once.
+	Retries int
+
+	// RetryBase is the base delay used for exponential backoff between retries. A
+	// value <= 0 falls back to defaultRetryBase.
+	RetryBase time.Duration
 }
 
 // NewCommand returns a pointer to a new, initialized command.
