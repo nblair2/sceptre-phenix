@@ -1548,7 +1548,17 @@ func (s SOH) customTest( //nolint:funlen // complex logic
 		script += ".ps1"
 	}
 
-	path := fmt.Sprintf("%s/images/%s/%s", common.PhenixBase, ns, script)
+	// All three paths below must agree on the same minimega-relative path
+	// (<ns>/<script>): the file is written under minimega's files directory
+	// (PhenixBase/images), `cc send` resolves it relative to that directory and
+	// delivers it to the VM preserving the relative path (so it lands at
+	// /tmp/miniccc/files/<ns>/<script>), and the executor must invoke it from
+	// that same location. Keeping these in sync via a single relPath avoids the
+	// mismatch where the file is delivered to the <ns>/ subdir but executed from
+	// the root, which makes every custom test fail.
+	relPath := fmt.Sprintf("%s/%s", ns, script)
+
+	path := fmt.Sprintf("%s/images/%s", common.PhenixBase, relPath)
 
 	err := os.WriteFile(path, []byte(test.TestScript), 0o600)
 	if err != nil {
@@ -1557,11 +1567,11 @@ func (s SOH) customTest( //nolint:funlen // complex logic
 		return
 	}
 
-	command := fmt.Sprintf("%s /tmp/miniccc/files/%s", executor, script)
+	command := fmt.Sprintf("%s /tmp/miniccc/files/%s", executor, relPath)
 	opts := []mm.C2Option{
 		mm.C2NS(ns),
 		mm.C2VM(host),
-		mm.C2SendFile(script),
+		mm.C2SendFile(relPath),
 		mm.C2Command(command),
 		mm.C2Timeout(s.md.c2Timeout),
 	}
