@@ -229,15 +229,21 @@ func (m Minimega) GetVMInfo(opts ...Option) VMs { //nolint:funlen // complex log
 		vm.RAM, _ = strconv.Atoi(row["memory"])
 		vm.CPUs, _ = strconv.Atoi(row["vcpus"])
 
+		// The disks column can be empty (e.g. a VM that was queued but never fully
+		// configured, or a malformed/partial response from a mesh node). Guard the
+		// slice access so a missing disk doesn't panic with an index out of range.
+		var disk string
+
 		// TODO: confirm multiple disks are separated by whitespace.
-		disk := strings.Fields(row["disks"])[0]
-		// diskspec can include multiple settings separated by comma. Path to disk
-		// will always be first setting.
-		disk = strings.Split(disk, ",")[0]
+		if fields := strings.Fields(row["disks"]); len(fields) > 0 {
+			// diskspec can include multiple settings separated by comma. Path to
+			// disk will always be first setting.
+			disk = strings.Split(fields[0], ",")[0]
+		}
 
 		snapshot, _ := strconv.ParseBool(row["snapshot"])
 
-		if snapshot {
+		if snapshot && disk != "" {
 			cmd = mmcli.NewCommand()
 			cmd.Command = "disk info " + disk
 
@@ -806,7 +812,16 @@ func (Minimega) GetExperimentCaptures(opts ...Option) []Capture {
 		}
 
 		// `interface` column will be in the form of <vm_name>:<iface_idx>
-		iface := strings.Split(row["interface"], ":")
+		iface := strings.SplitN(row["interface"], ":", 2)
+		if len(iface) != 2 {
+			plog.Warn(
+				plog.TypeSystem,
+				"unexpected capture interface format",
+				"interface", row["interface"],
+			)
+
+			continue
+		}
 
 		vm := iface[0]
 		idx, _ := strconv.Atoi(iface[1])
@@ -934,7 +949,35 @@ func (m Minimega) IsHeadnode(node string) bool {
 	// Docker containers by Docker Compose config.
 	node = common.TrimHostnameSuffixes(node)
 
-	return node == m.Headnode()
+	head := m.Headnode()
+
+	// If we can't determine the headnode, fail safe by assuming the command
+	// targets the local node. Returning false here would make callers build a
+	// `mesh send <node> ...` that minimega rejects with "cannot mesh send
+	// yourself" when <node> is in fact the headnode.
+	if head == "" {
+		plog.Warn(
+			plog.TypeSystem,
+			"headnode unknown; assuming local to avoid mesh-send-to-self",
+			"node", node,
+		)
+
+		return true
+	}
+
+	if node == head {
+		return true
+	}
+
+	// Fall back to the local hostname to cover FQDN vs. short-name mismatches
+	// between what minimega reports as the headnode and what a caller passes in.
+	if local, err := os.Hostname(); err == nil {
+		if node == common.TrimHostnameSuffixes(local) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (m Minimega) GetMMArgs() (map[string]string, error) {
