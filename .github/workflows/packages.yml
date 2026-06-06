@@ -64,6 +64,17 @@ jobs:
             type=oci,dest=/tmp/phenix-oci,tar=false
             ${{ github.event_name != 'pull_request' && 'type=registry' || '' }}
 
+      - name: Resolve parent image digest from the OCI layout
+        id: oci
+        run: |
+          digest=$(jq -r '.manifests[0].digest' /tmp/phenix-oci/index.json)
+          echo "Resolved parent digest: ${digest}"
+          if [ -z "${digest}" ] || [ "${digest}" = "null" ]; then
+            echo "::error::Could not read parent image digest from /tmp/phenix-oci/index.json"
+            exit 1
+          fi
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+
       - name: Build Debian Package
         env:
           PHENIX_BUILD_IMAGE: ${{ fromJSON(steps.meta.outputs.json).tags[0] }}
@@ -100,9 +111,9 @@ jobs:
             PHENIX_REPO=${{ github.event.pull_request.head.repo.full_name || github.repository }}
             PHENIX_IMG=${{ fromJSON(steps.meta.outputs.json).tags[0] }}
             PHENIX_BRANCH=${{ github.head_ref || github.ref_name }}
-          # Resolve FROM from the on-disk OCI layout so PR builds work without the parent in ghcr.
+          # Resolve the JIT FROM from the on-disk OCI layout
           build-contexts: |
-            ${{ fromJSON(steps.meta.outputs.json).tags[0] }}=oci-layout:///tmp/phenix-oci@${{ steps.build-main.outputs.digest }}
+            ${{ fromJSON(steps.meta.outputs.json).tags[0] }}=oci-layout:///tmp/phenix-oci@${{ steps.oci.outputs.digest }}
           tags: ${{ steps.meta-jit.outputs.tags }}
           provenance: false
           cache-from: type=gha,scope=phenix-jit
