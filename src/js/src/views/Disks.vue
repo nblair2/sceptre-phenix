@@ -306,18 +306,16 @@
   </div>
 </template>
 
-<script setup>
-  import { roleAllowed } from '@/utils/rbac.js';
-</script>
 <script>
   import axiosInstance from '@/utils/axios.js';
   import { useErrorNotification } from '@/utils/errorNotif';
   import { usePhenixStore } from '@/store.js';
   import { useTable } from '@/utils/useTable.js';
+  import { roleAllowed } from '@/utils/rbac.js';
 
   export default {
     setup() {
-      return useTable();
+      return { ...useTable(), roleAllowed };
     },
     async created() {
       this.updateDisks();

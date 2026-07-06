@@ -336,10 +336,7 @@
                 {{ vmI.name }} <br /><br />
                 CPUs:
                 <b-tooltip label="menu for assigning cpus" type="is-dark">
-                  <b-select
-                    :value="vmI.cpus"
-                    expanded
-                    @update:modelValue="(value) => (vmI.cpus = value)">
+                  <b-select v-model="vmI.cpus" expanded>
                     <option value="1">1</option>
                     <option value="2">2</option>
                     <option value="3">3</option>
@@ -352,10 +349,7 @@
                 </b-tooltip>
                 Memory:
                 <b-tooltip label="menu for assigning memory" type="is-dark">
-                  <b-select
-                    :value="vmI.ram"
-                    expanded
-                    @update:modelValue="(value) => (vmI.ram = value)">
+                  <b-select v-model="vmI.ram" expanded>
                     <option value="512">512 MB</option>
                     <option value="1024">1 GB</option>
                     <option value="2048">2 GB</option>
@@ -369,9 +363,7 @@
                 <br /><br />
                 Disk:
                 <b-tooltip :label="getDiskToolTip(vmI.disk)" type="is-dark">
-                  <b-select
-                    :value="vmI.disk"
-                    @update:modelValue="(value) => (vmI.disk = value)">
+                  <b-select v-model="vmI.disk">
                     <option v-for="(d, index) in disks" :key="index" :value="d">
                       {{ getBaseName(d) }}
                     </option>
@@ -382,10 +374,7 @@
                 <b-tooltip
                   label="menu for replicating injections"
                   type="is-dark">
-                  <b-select
-                    :value="vmI.inject"
-                    expanded
-                    @update:modelValue="(value) => (vmI.inject = value)">
+                  <b-select v-model="vmI.inject" expanded>
                     <option value="true">Yes</option>
                     <option value="false">No</option>
                   </b-select>
@@ -1449,13 +1438,6 @@
   </div>
 </template>
 
-<script setup>
-  import { roleAllowed } from '@/utils/rbac.js';
-  import axiosInstance from '@/utils/axios.js';
-  import { formattingMixin } from '@/utils/formattingMixin.js';
-  import { useErrorNotification } from '@/utils/errorNotif';
-</script>
-
 <script>
   import VMLabelsModal from '@/components/VMLabelsModal.vue';
   import { tagCount } from '@/utils/tagCount';
@@ -1463,9 +1445,16 @@
   import { usePhenixStore } from '@/store';
   import VMMountBrowserModal from '@/components/VMMountBrowserModal.vue';
   import { debounce } from 'lodash-es';
+  import { roleAllowed } from '@/utils/rbac.js';
+  import axiosInstance from '@/utils/axios.js';
+  import { formattingMixin } from '@/utils/formattingMixin.js';
+  import { useErrorNotification } from '@/utils/errorNotif';
 
   export default {
     mixins: [formattingMixin],
+    setup() {
+      return { roleAllowed, tagCount };
+    },
 
     async beforeUnmount() {
       removeWsHandler(this.handleWs);

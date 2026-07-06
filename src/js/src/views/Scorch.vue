@@ -158,9 +158,6 @@
     </b-modal>
   </div>
 </template>
-<script setup>
-  import { roleAllowed } from '@/utils/rbac.js';
-</script>
 <script>
   import Terminal from '@/components/MiniTerminal.vue';
 
@@ -168,11 +165,12 @@
   import { useErrorNotification } from '@/utils/errorNotif';
   import { addWsHandler, removeWsHandler } from '@/utils/websocket';
   import { useTable } from '@/utils/useTable.js';
+  import { roleAllowed } from '@/utils/rbac.js';
 
   export default {
     setup() {
       const { table } = useTable();
-      return { table };
+      return { table, roleAllowed };
     },
     components: {
       'vue-terminal': Terminal,

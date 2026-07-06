@@ -52,5 +52,9 @@ export default defineConfig(({ mode }) => {
         },
       },
     },
+    // vitest: the Playwright suite in e2e/ has its own runner
+    test: {
+      exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
+    },
   };
 });
