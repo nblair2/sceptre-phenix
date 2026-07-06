@@ -666,22 +666,22 @@
   </div>
 </template>
 
-<script setup>
-  import { roleAllowed } from '@/utils/rbac.js';
-  import axiosInstance from '@/utils/axios.js';
-  import { formattingMixin } from '@/utils/formattingMixin.js';
-  import { useErrorNotification } from '@/utils/errorNotif';
-</script>
-
 <script>
   import { debounce } from 'lodash-es';
   import { tagCount } from '@/utils/tagCount';
   import { usePhenixStore } from '@/store';
   import { addWsHandler, removeWsHandler } from '@/utils/websocket';
   import VMLabelsModal from '@/components/VMLabelsModal.vue';
+  import { roleAllowed } from '@/utils/rbac.js';
+  import axiosInstance from '@/utils/axios.js';
+  import { formattingMixin } from '@/utils/formattingMixin.js';
+  import { useErrorNotification } from '@/utils/errorNotif';
 
   export default {
     mixins: [formattingMixin],
+    setup() {
+      return { roleAllowed, tagCount };
+    },
     beforeUnmount() {
       removeWsHandler(this.handleWs);
     },
