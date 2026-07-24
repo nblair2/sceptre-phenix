@@ -120,7 +120,6 @@ const router = createRouter({
 
     //console paths
     { path: '/api/v1/console/:pid/ws', name: 'console-ws' },
-    { path: '/api/v1/console/:pid/size', name: 'console-size' },
 
     //tunneler paths
     {

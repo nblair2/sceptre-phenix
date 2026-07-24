@@ -535,7 +535,7 @@
           message: 'Are you sure you want to download this disk?',
           onConfirm: () => {
             const store = usePhenixStore();
-            const basePath = import.meta.env.VITE_BASE_PATH || '/';
+            const basePath = import.meta.env.BASE_URL;
             window.open(
               `${basePath}api/v1/disks/download?token=${store.token}&disk=${encodeURIComponent(path)}`,
               '_blank',

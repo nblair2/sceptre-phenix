@@ -305,9 +305,13 @@
       },
 
       exitTerminal() {
-        axiosInstance.post(this.terminal.exit).finally(() => {
-          this.resetTerminal(true);
-        });
+        // terminal.exit is a server-provided path that already includes the
+        // base path; clear baseURL so axios doesn't prepend it again
+        axiosInstance
+          .post(this.terminal.exit, null, { baseURL: '' })
+          .finally(() => {
+            this.resetTerminal(true);
+          });
       },
 
       exitOutput() {

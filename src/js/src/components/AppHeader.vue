@@ -8,7 +8,7 @@ are only available to Global Administrator or Global Viewer.
 <template>
   <b-navbar class="mb-4">
     <template #brand>
-      <b-navbar-item tag="router-link" :to="homeLoc()" :active="false">
+      <b-navbar-item tag="router-link" :to="{ name: 'home' }" :active="false">
         <img src="@/assets/imgs/phenix-banner.png" alt="phenix" />
       </b-navbar-item>
     </template>
@@ -143,10 +143,6 @@ are only available to Global Administrator or Global Viewer.
             }
           }
         });
-      },
-
-      homeLoc() {
-        return this.$router.resolve({ name: 'home' }).href;
       },
 
       builderLoc() {

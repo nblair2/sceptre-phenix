@@ -410,11 +410,15 @@
       },
 
       exitTerminal() {
-        axiosInstance.pos(this.terminal.exit).then(() => {
-          this.resetTerminal(true);
-          this.experimentTerminal(this.terminal.exp, false);
-          delete this.terminals[this.terminal.exp];
-        });
+        // terminal.exit is a server-provided path that already includes the
+        // base path; clear baseURL so axios doesn't prepend it again
+        axiosInstance
+          .post(this.terminal.exit, null, { baseURL: '' })
+          .then(() => {
+            this.resetTerminal(true);
+            this.experimentTerminal(this.terminal.exp, false);
+            delete this.terminals[this.terminal.exp];
+          });
       },
 
       experimentTerminal(exp, enabled) {
