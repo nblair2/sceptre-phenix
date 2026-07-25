@@ -43,6 +43,14 @@ const (
 // instances of the Minimega struct.
 var ccMu sync.Mutex //nolint:gochecknoglobals // global lock
 
+// Cache of the last known good headnode name. The headnode does not change for
+// the life of the process, so a transient minimega failure must not be allowed
+// to change how cluster commands are routed.
+var headnode struct { //nolint:gochecknoglobals // process-lifetime cache
+	mu   sync.Mutex
+	name string
+}
+
 // Regular express to use for matching C2 response headers.
 var responseRegex = regexp.MustCompile(`(\d*)\/(.*)\/(stdout|stderr):`)
 
@@ -278,15 +286,21 @@ func (Minimega) GetVMScreenshot(opts ...Option) ([]byte, error) {
 	cmd := mmcli.NewNamespacedCommand(o.ns)
 	cmd.Command = fmt.Sprintf("vm screenshot %s file /dev/null %s", o.vm, o.screenshotSize)
 
+	var (
+		screenshot []byte
+		err        error
+	)
+
+	// Drain the full response channel -- returning early would abandon it and wedge the shared minimega connection.
 	for resps := range mmcli.Run(cmd) {
 		for _, resp := range resps.Resp {
-			if resp.Error != "" {
-				if strings.HasPrefix(resp.Error, "vm not found:") {
-					return nil, ErrVMNotFound
-				}
+			if screenshot != nil {
+				continue
+			}
 
-				if strings.HasPrefix(resp.Error, "vm not running:") {
-					return nil, ErrVMNotFound
+			if resp.Error != "" {
+				if strings.HasPrefix(resp.Error, "vm not found:") || strings.HasPrefix(resp.Error, "vm not running:") {
+					err = ErrVMNotFound
 				}
 
 				continue
@@ -297,13 +311,27 @@ func (Minimega) GetVMScreenshot(opts ...Option) ([]byte, error) {
 			}
 
 			data, _ := resp.Data.(string)
-			screenshot, err := base64.StdEncoding.DecodeString(data)
-			if err != nil {
-				return nil, fmt.Errorf("decoding screenshot: %w", err)
+
+			decoded, decErr := base64.StdEncoding.DecodeString(data)
+			if decErr != nil {
+				err = fmt.Errorf("decoding screenshot: %w", decErr)
+				continue
 			}
 
-			return screenshot, nil
+			screenshot = decoded
 		}
+	}
+
+	// A screenshot found on one host wins over any error recorded from another
+	// -- in a namespace, sibling hosts legitimately answer "vm not found" while
+	// one host has the real data, and the old code returned ErrVMNotFound if
+	// that response happened to be processed first.
+	if screenshot != nil {
+		return screenshot, nil
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	return nil, ErrScreenshotNotFound
@@ -928,14 +956,24 @@ func (Minimega) Headnode() string {
 	hosts := processNamespaceHosts("minimega")
 
 	if len(hosts) == 0 {
-		return "" // ???
-	}
+		// hosts is empty on any mmcli failure, not just a genuinely empty mesh --
+		// fall back to the last known good headnode name instead of "" so a
+		// transient blip doesn't make the headnode appear unknown.
+		headnode.mu.Lock()
+		defer headnode.mu.Unlock()
 
-	headnode := hosts[0].Name
+		return headnode.name
+	}
 
 	// Trim host name suffixes (like -minimega, or -phenix) potentially added to
 	// Docker containers by Docker Compose config.
-	return common.TrimHostnameSuffixes(headnode)
+	name := common.TrimHostnameSuffixes(hosts[0].Name)
+
+	headnode.mu.Lock()
+	headnode.name = name
+	headnode.mu.Unlock()
+
+	return name
 }
 
 func (m Minimega) IsHeadnode(node string) bool {
@@ -943,28 +981,15 @@ func (m Minimega) IsHeadnode(node string) bool {
 	// Docker containers by Docker Compose config.
 	node = common.TrimHostnameSuffixes(node)
 
-	head := m.Headnode()
-
-	// If we can't determine the headnode, assume the local node
-	if head == "" {
-		plog.Warn(
-			plog.TypeSystem,
-			"headnode unknown; assuming local to avoid mesh-send-to-self",
-			"node", node,
-		)
-
+	if node == m.Headnode() {
 		return true
 	}
 
-	if node == head {
-		return true
-	}
-
-	// Fall back to the local hostname
+	// Fall back to the local hostname. This avoids trying to mesh send to
+	// ourselves when the headnode listing is unavailable or the local node is
+	// not listed first.
 	if local, err := os.Hostname(); err == nil {
-		if node == common.TrimHostnameSuffixes(local) {
-			return true
-		}
+		return node == common.TrimHostnameSuffixes(local)
 	}
 
 	return false
@@ -1445,19 +1470,33 @@ func (Minimega) MeshShellResponse(host, command string) (string, error) {
 		cmd.Command = fmt.Sprintf("mesh send %s shell %s", host, command)
 	}
 
+	var (
+		out   string
+		found bool
+	)
+
+	// Drain the full response channel -- returning early would abandon it and wedge the shared minimega connection.
 	for resps := range mmcli.Run(cmd) {
 		for _, resp := range resps.Resp {
+			if found {
+				continue
+			}
+
 			if resp.Error != "" {
-				plog.Warn(plog.TypeSystem, "error running shell command: ", "cmd", cmd)
+				plog.Warn(plog.TypeSystem, "error running shell command", "cmd", cmd.Command, "error", resp.Error)
 
 				continue
 			}
 
-			return strings.TrimSpace(resp.Response), nil
+			out, found = strings.TrimSpace(resp.Response), true
 		}
 	}
 
-	return "", errors.New("error running MeshShellResponse()")
+	if !found {
+		return "", errors.New("error running MeshShellResponse()")
+	}
+
+	return out, nil
 }
 
 func (Minimega) MeshSend(ns, host, command string) error {
