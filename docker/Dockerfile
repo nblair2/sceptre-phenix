@@ -76,8 +76,8 @@ RUN make -C src/go phenix-tunneler
 # Allow installing from a fork of sceptre-phenix-apps that could
 # exist on GitHub or elsewhere.
 # We can specify one APPS_REPO and APPS_BRANCH for both Go and Python
-ARG APPS_REPO=github.com/sandialabs/sceptre-phenix-apps
-ARG APPS_BRANCH=main
+ARG APPS_REPO=github.com/nblair2/sceptre-phenix-apps
+ARG APPS_BRANCH=chore-multi-test
 # Or the user can override Go and Python apps repos/branches separately
 ARG GO_APPS_REPO=${APPS_REPO}
 ARG GO_APPS_BRANCH=${APPS_BRANCH}
@@ -160,8 +160,8 @@ RUN python3 -m pip install --break-system-packages --no-cache-dir /tmp/minimega
 # Allow installing from a fork of sceptre-phenix-apps that could
 # exist on GitHub or elsewhere.
 # We can specify one APPS_REPO and APPS_BRANCH for both Go and Python
-ARG APPS_REPO=github.com/sandialabs/sceptre-phenix-apps
-ARG APPS_BRANCH=main
+ARG APPS_REPO=github.com/nblair2/sceptre-phenix-apps
+ARG APPS_BRANCH=chore-multi-test
 # Or the user can override Go and Python apps repos/branches separately
 ARG PY_APPS_REPO=${APPS_REPO}
 ARG PY_APPS_BRANCH=${APPS_BRANCH}
