@@ -211,7 +211,9 @@ func (log *LogEntry) UnmarshalJSON(data []byte) error { //nolint:funlen // compl
 				log.Time = int64(ts)
 				log.Timestamp = time.UnixMicro(log.Time).Format(TimestampFormat)
 			} else if ts, ok := value.(string); ok {
-				t, err := time.ParseInLocation(TimestampFormat, ts, time.UTC)
+				// log files are written with zone-less local timestamps (see the
+				// TimeKey ReplaceAttr above), so they must be parsed as local time
+				t, err := time.ParseInLocation(TimestampFormat, ts, time.Local) //nolint:gosmopolitan // must match the writer's zone
 				if err != nil {
 					t, err = time.Parse(time.RFC3339Nano, ts)
 					if err != nil {
