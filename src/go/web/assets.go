@@ -8,6 +8,7 @@ import (
 
 // the all: prefix is required: without it embed skips files starting with
 // '_' or '.', and Vite emits shared chunks named like _baseIsEqual-<hash>.js
+//
 //go:embed all:public
 var publicFS embed.FS
 
