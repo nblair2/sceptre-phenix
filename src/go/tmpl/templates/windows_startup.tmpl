@@ -63,6 +63,246 @@ function Phenix-StartupStatusIs($status) {
     return $false
 }
 
+function Phenix-EnsureMinicccAccess($autoLogonIdentity) {
+    $groupName = "MinicccUsers"
+
+    if (-Not (Get-LocalGroup -Name $groupName -ErrorAction SilentlyContinue)) {
+        Write-Host "Creating local group $groupName for miniccc virtio-serial access"
+        New-LocalGroup -Name $groupName -Description "Users allowed to access miniccc virtio-serial device" | Out-Null
+    }
+
+    $memberSid = (New-Object System.Security.Principal.NTAccount($autoLogonIdentity)).Translate([System.Security.Principal.SecurityIdentifier])
+    $groupSid = (New-Object System.Security.Principal.NTAccount("$env:COMPUTERNAME\$groupName")).Translate([System.Security.Principal.SecurityIdentifier])
+
+    $groupMembers = Get-LocalGroupMember -Group $groupName -ErrorAction Stop
+    if (-Not ($groupMembers | Where-Object { $_.SID -and $_.SID.Value -eq $memberSid.Value })) {
+        Write-Host "Adding $autoLogonIdentity to $groupName"
+        Add-LocalGroupMember -Group $groupName -Member $autoLogonIdentity -ErrorAction Stop
+    }
+
+    # \\.\Global\cc is a symbolic link to a kernel device object, not a regular filesystem file.
+    # File ACL tools (icacls/Set-Acl) are not reliable here; update the device-object DACL directly.
+    # Related context: sandia-minimega/minimega#1560
+    if (-Not ("Phenix.DeviceAcl" -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Security.Principal;
+
+namespace Phenix {
+    public static class DeviceAcl {
+        private const uint READ_CONTROL = 0x00020000;
+        private const uint WRITE_DAC = 0x00040000;
+        private const uint FILE_SHARE_READ = 0x00000001;
+        private const uint FILE_SHARE_WRITE = 0x00000002;
+        private const uint OPEN_EXISTING = 3;
+        private const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
+        private const uint SE_KERNEL_OBJECT = 6;
+        private const uint DACL_SECURITY_INFORMATION = 0x00000004;
+        private const uint GENERIC_READ = 0x80000000;
+        private const uint GENERIC_WRITE = 0x40000000;
+        private const uint NO_INHERITANCE = 0x0;
+        private const uint TRUSTEE_IS_SID = 0;
+        private const uint TRUSTEE_IS_GROUP = 2;
+        private const uint GRANT_ACCESS = 1;
+        private const uint REVOKE_ACCESS = 4;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct TRUSTEE {
+            public IntPtr pMultipleTrustee;
+            public uint MultipleTrusteeOperation;
+            public uint TrusteeForm;
+            public uint TrusteeType;
+            public IntPtr ptstrName;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct EXPLICIT_ACCESS {
+            public uint grfAccessPermissions;
+            public uint grfAccessMode;
+            public uint grfInheritance;
+            public TRUSTEE Trustee;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateFile(
+            string lpFileName,
+            uint dwDesiredAccess,
+            uint dwShareMode,
+            IntPtr lpSecurityAttributes,
+            uint dwCreationDisposition,
+            uint dwFlagsAndAttributes,
+            IntPtr hTemplateFile
+        );
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool CloseHandle(IntPtr hObject);
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern uint GetSecurityInfo(
+            IntPtr handle,
+            uint objectType,
+            uint securityInfo,
+            IntPtr ownerSid,
+            IntPtr groupSid,
+            out IntPtr dacl,
+            IntPtr sacl,
+            out IntPtr securityDescriptor
+        );
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern uint SetEntriesInAcl(
+            uint cCountOfExplicitEntries,
+            [In] EXPLICIT_ACCESS[] pListOfExplicitEntries,
+            IntPtr oldAcl,
+            out IntPtr newAcl
+        );
+
+        [DllImport("advapi32.dll", SetLastError = true)]
+        private static extern uint SetSecurityInfo(
+            IntPtr handle,
+            uint objectType,
+            uint securityInfo,
+            IntPtr ownerSid,
+            IntPtr groupSid,
+            IntPtr dacl,
+            IntPtr sacl
+        );
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr LocalFree(IntPtr hMem);
+
+        private static string DescribeResult(uint result) {
+            return new Win32Exception((int)result).Message;
+        }
+
+        public static bool TryGrantReadWriteAccess(string devicePath, string sidValue, out string error) {
+            error = string.Empty;
+            IntPtr handle = CreateFile(
+                devicePath,
+                READ_CONTROL | WRITE_DAC,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                IntPtr.Zero,
+                OPEN_EXISTING,
+                FILE_ATTRIBUTE_NORMAL,
+                IntPtr.Zero
+            );
+
+            if (handle == new IntPtr(-1)) {
+                error = "CreateFile failed: " + new Win32Exception(Marshal.GetLastWin32Error()).Message;
+                return false;
+            }
+
+            IntPtr securityDescriptor = IntPtr.Zero;
+            IntPtr existingDacl = IntPtr.Zero;
+            IntPtr updatedDacl = IntPtr.Zero;
+
+            try {
+                uint result = GetSecurityInfo(
+                    handle,
+                    SE_KERNEL_OBJECT,
+                    DACL_SECURITY_INFORMATION,
+                    IntPtr.Zero,
+                    IntPtr.Zero,
+                    out existingDacl,
+                    IntPtr.Zero,
+                    out securityDescriptor
+                );
+                if (result != 0) {
+                    error = "GetSecurityInfo failed: " + DescribeResult(result);
+                    return false;
+                }
+
+                SecurityIdentifier sid = new SecurityIdentifier(sidValue);
+                byte[] sidBytes = new byte[sid.BinaryLength];
+                sid.GetBinaryForm(sidBytes, 0);
+
+                GCHandle sidHandle = GCHandle.Alloc(sidBytes, GCHandleType.Pinned);
+                try {
+                    TRUSTEE trustee = new TRUSTEE {
+                        pMultipleTrustee = IntPtr.Zero,
+                        MultipleTrusteeOperation = 0,
+                        TrusteeForm = TRUSTEE_IS_SID,
+                        TrusteeType = TRUSTEE_IS_GROUP,
+                        ptstrName = sidHandle.AddrOfPinnedObject()
+                    };
+
+                    EXPLICIT_ACCESS[] accessEntries = new EXPLICIT_ACCESS[] {
+                        new EXPLICIT_ACCESS {
+                            grfAccessPermissions = 0,
+                            grfAccessMode = REVOKE_ACCESS,
+                            grfInheritance = NO_INHERITANCE,
+                            Trustee = trustee
+                        },
+                        new EXPLICIT_ACCESS {
+                            grfAccessPermissions = GENERIC_READ | GENERIC_WRITE,
+                            grfAccessMode = GRANT_ACCESS,
+                            grfInheritance = NO_INHERITANCE,
+                            Trustee = trustee
+                        }
+                    };
+
+                    result = SetEntriesInAcl((uint)accessEntries.Length, accessEntries, existingDacl, out updatedDacl);
+                    if (result != 0) {
+                        error = "SetEntriesInAcl failed: " + DescribeResult(result);
+                        return false;
+                    }
+
+                    result = SetSecurityInfo(
+                        handle,
+                        SE_KERNEL_OBJECT,
+                        DACL_SECURITY_INFORMATION,
+                        IntPtr.Zero,
+                        IntPtr.Zero,
+                        updatedDacl,
+                        IntPtr.Zero
+                    );
+                    if (result != 0) {
+                        error = "SetSecurityInfo failed: " + DescribeResult(result);
+                        return false;
+                    }
+                } finally {
+                    sidHandle.Free();
+                }
+            } finally {
+                if (updatedDacl != IntPtr.Zero) {
+                    LocalFree(updatedDacl);
+                }
+
+                if (securityDescriptor != IntPtr.Zero) {
+                    LocalFree(securityDescriptor);
+                }
+
+                CloseHandle(handle);
+            }
+
+            return true;
+        }
+    }
+}
+'@
+    }
+
+    $devicePath = "\\.\Global\cc"
+    $maxAttempts = 30
+    $attempt = 0
+
+    while ($attempt -lt $maxAttempts) {
+        $attempt++
+        $aclErr = ""
+        if ([Phenix.DeviceAcl]::TryGrantReadWriteAccess($devicePath, $groupSid.Value, [ref]$aclErr)) {
+            Write-Host "Granted read/write access on $devicePath to group $groupName"
+            return
+        }
+
+        Write-Host "Waiting for virtio-serial device ACL update attempt $attempt/$maxAttempts: $aclErr"
+        Start-Sleep -Seconds 2
+    }
+
+    throw "Unable to update virtio-serial device ACL for $devicePath after $maxAttempts attempts"
+}
+
 {{ $rearm := index .Node.Annotations "phenix/windows-rearm" }}
 
 {{ if toBool $rearm }}
@@ -167,13 +407,14 @@ if ($host_name -ceq "{{ .Node.General.Hostname }}") {
     Set-ItemProperty -Path $path -Name DefaultPassword -Value "{{ index .Metadata "auto_logon" "password" }}"
         {{ if index .Metadata "auto_logon" "local" }}
     Set-ItemProperty -Path $path -Name DefaultDomainName -Value "."
-    Add-LocalGroupMember -Group "Administrators" -Member "{{ index .Metadata "auto_logon" "username" }}"
+    $autoLogonIdentity = ".\{{ index .Metadata "auto_logon" "username" }}"
 
         {{ else }}
     Set-ItemProperty -Path $path -Name DefaultDomainName -Value $domain
-    Add-LocalGroupMember -Group "Administrators" -Member "{{ index .Metadata "auto_logon" "username" }}"
+    $autoLogonIdentity = "$domain\{{ index .Metadata "auto_logon" "username" }}"
 
         {{ end }}
+    Phenix-EnsureMinicccAccess $autoLogonIdentity
     Set-ItemProperty -Path $path -Name AutoAdminLogon -Value 1
     {{ end }}
 
@@ -193,7 +434,8 @@ if ($host_name -ceq "{{ .Node.General.Hostname }}") {
     Set-ItemProperty -Path $path -Name DefaultPassword -Value "{{ index .Metadata "auto_logon" "password" }}"
     Set-ItemProperty -Path $path -Name DefaultDomainName -Value "."
     Set-ItemProperty -Path $path -Name AutoAdminLogon -Value 1
-    Add-LocalGroupMember -Group "Administrators" -Member "{{ index .Metadata "auto_logon" "username" }}"
+    $autoLogonIdentity = ".\{{ index .Metadata "auto_logon" "username" }}"
+    Phenix-EnsureMinicccAccess $autoLogonIdentity
 
     Phenix-SetStartupStatus('auto-logon')
     Restart-Computer -Force
