@@ -14,7 +14,6 @@ require (
 	github.com/go-openapi/swag v0.19.5 // indirect
 	github.com/gofrs/uuid/v5 v5.4.0 // indirect
 	github.com/gogo/protobuf v1.2.1 // indirect
-	github.com/golang/mock v1.4.4 // indirect
 	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/google/uuid v1.0.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect

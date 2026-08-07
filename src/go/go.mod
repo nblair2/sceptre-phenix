@@ -13,7 +13,6 @@ require (
 	github.com/getkin/kin-openapi v0.118.0
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/golang/mock v1.4.4
-	github.com/golang/protobuf v1.4.2
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/hashicorp/go-multierror v1.0.0
@@ -47,6 +46,7 @@ require (
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/swag v0.19.5 // indirect
 	github.com/gogo/protobuf v1.2.1 // indirect
+	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/google/uuid v1.0.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
