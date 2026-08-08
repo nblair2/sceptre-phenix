@@ -5,13 +5,18 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/activeshadow/structs"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/gorilla/mux"
 
+	"phenix/api/config"
 	"phenix/api/settings"
+	"phenix/store"
 	"phenix/util/plog"
+	v1 "phenix/types/version/v1"
 	"phenix/web/middleware"
 	"phenix/web/rbac"
 	"phenix/web/util"
@@ -547,4 +552,268 @@ func GetRoles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, _ = w.Write(body)
+}
+
+// GetRole - GET /roles/{name}.
+func GetRole(w http.ResponseWriter, r *http.Request) {
+	plog.Debug(plog.TypeSystem, "HTTP handler called", "handler", "GetRole")
+
+	var (
+		ctx  = r.Context()
+		role = middleware.RoleFromContext(ctx)
+		vars = mux.Vars(r)
+		name = vars["name"]
+	)
+
+	if !role.Allowed("roles", "get") {
+		plog.Error(
+			plog.TypeSecurity,
+			"getting role not allowed",
+			"username",
+			middleware.UserFromContext(ctx),
+		)
+		http.Error(w, "forbidden to get role", http.StatusForbidden)
+
+		return
+	}
+
+	r2, err := rbac.RoleFromConfig(name)
+	if err != nil {
+		http.Error(w, "role not found: "+name, http.StatusNotFound)
+
+		return
+	}
+
+	body, err := json.Marshal(roleFromRBAC(*r2))
+	if err != nil {
+		plog.Error(plog.TypeSystem, "marshaling role", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	_, _ = w.Write(body)
+}
+
+type createRoleRequest struct {
+	Name     string       `json:"name"`
+	Policies []Policy `json:"policies"`
+}
+
+// CreateRole - POST /roles.
+func CreateRole(w http.ResponseWriter, r *http.Request) {
+	plog.Debug(plog.TypeSystem, "HTTP handler called", "handler", "CreateRole")
+
+	var (
+		ctx  = r.Context()
+		role = middleware.RoleFromContext(ctx)
+	)
+
+	if !role.Allowed("roles", "create") {
+		plog.Error(
+			plog.TypeSecurity,
+			"creating role not allowed",
+			"username",
+			middleware.UserFromContext(ctx),
+		)
+		http.Error(w, "forbidden to create role", http.StatusForbidden)
+
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		plog.Error(plog.TypeSystem, "reading request body", "err", err)
+		http.Error(w, "unable to read request body", http.StatusInternalServerError)
+
+		return
+	}
+
+	var req createRoleRequest
+
+	if err := json.Unmarshal(body, &req); err != nil {
+		plog.Error(plog.TypeSystem, "unmarshaling request body", "err", err)
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+
+		return
+	}
+
+	if req.Name == "" {
+		http.Error(w, "role name is required", http.StatusBadRequest)
+
+		return
+	}
+
+	policies := make([]*v1.PolicySpec, len(req.Policies))
+	for i, p := range req.Policies {
+		policies[i] = &v1.PolicySpec{
+			Resources:     p.Resources,
+			ResourceNames: p.ResourceNames,
+			Verbs:         p.Verbs,
+		}
+	}
+
+	spec := &v1.RoleSpec{
+		Name:     req.Name,
+		Policies: policies,
+	}
+
+	metaName := strings.ToLower(strings.ReplaceAll(req.Name, " ", "-"))
+
+	c := &store.Config{ //nolint:exhaustruct // partial initialization
+		Version:  "phenix.sandia.gov/v1",
+		Kind:     "Role",
+		Metadata: store.ConfigMetadata{Name: metaName}, //nolint:exhaustruct // partial initialization
+		Spec:     structs.MapDefaultCase(spec, structs.CASESNAKE),
+	}
+
+	if err := store.Create(c); err != nil {
+		plog.Error(plog.TypeSystem, "creating role", "name", req.Name, "err", err)
+		http.Error(w, "error creating role: "+err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	roleOut := roleFromRBAC(rbac.Role{Spec: spec}) //nolint:exhaustruct // partial initialization
+
+	out, err := json.Marshal(roleOut)
+	if err != nil {
+		plog.Error(plog.TypeSystem, "marshaling role", "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	plog.Info(
+		plog.TypeAction,
+		"role created",
+		"user",
+		middleware.UserFromContext(ctx),
+		"role",
+		req.Name,
+	)
+
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write(out)
+}
+
+type updateRoleRequest struct {
+	Policies []Policy `json:"policies"`
+}
+
+// UpdateRole - PATCH /roles/{name}.
+func UpdateRole(w http.ResponseWriter, r *http.Request) {
+	plog.Debug(plog.TypeSystem, "HTTP handler called", "handler", "UpdateRole")
+
+	var (
+		ctx  = r.Context()
+		role = middleware.RoleFromContext(ctx)
+		vars = mux.Vars(r)
+		name = vars["name"]
+	)
+
+	if !role.Allowed("roles", "patch") {
+		plog.Error(
+			plog.TypeSecurity,
+			"updating role not allowed",
+			"username",
+			middleware.UserFromContext(ctx),
+		)
+		http.Error(w, "forbidden to update role", http.StatusForbidden)
+
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		plog.Error(plog.TypeSystem, "reading request body", "err", err)
+		http.Error(w, "unable to read request body", http.StatusInternalServerError)
+
+		return
+	}
+
+	var req updateRoleRequest
+
+	if err := json.Unmarshal(body, &req); err != nil {
+		plog.Error(plog.TypeSystem, "unmarshaling request body", "err", err)
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+
+		return
+	}
+
+	r2, err := rbac.RoleFromConfig(name)
+	if err != nil {
+		http.Error(w, "role not found: "+name, http.StatusNotFound)
+
+		return
+	}
+
+	policies := make([]*v1.PolicySpec, len(req.Policies))
+	for i, p := range req.Policies {
+		policies[i] = &v1.PolicySpec{
+			Resources:     p.Resources,
+			ResourceNames: p.ResourceNames,
+			Verbs:         p.Verbs,
+		}
+	}
+
+	r2.Spec.Policies = policies
+
+	if err := r2.Save(); err != nil {
+		plog.Error(plog.TypeSystem, "saving role", "name", name, "err", err)
+		http.Error(w, "error updating role: "+err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	plog.Info(
+		plog.TypeAction,
+		"role updated",
+		"user",
+		middleware.UserFromContext(ctx),
+		"role",
+		name,
+	)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteRole - DELETE /roles/{name}.
+func DeleteRole(w http.ResponseWriter, r *http.Request) {
+	plog.Debug(plog.TypeSystem, "HTTP handler called", "handler", "DeleteRole")
+
+	var (
+		ctx  = r.Context()
+		role = middleware.RoleFromContext(ctx)
+		vars = mux.Vars(r)
+		name = vars["name"]
+	)
+
+	if !role.Allowed("roles", "delete") {
+		plog.Error(
+			plog.TypeSecurity,
+			"deleting role not allowed",
+			"username",
+			middleware.UserFromContext(ctx),
+		)
+		http.Error(w, "forbidden to delete role", http.StatusForbidden)
+
+		return
+	}
+
+	if err := config.Delete("role/" + name); err != nil {
+		plog.Error(plog.TypeSystem, "deleting role", "name", name, "err", err)
+		http.Error(w, "error deleting role: "+err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	plog.Info(
+		plog.TypeAction,
+		"role deleted",
+		"user",
+		middleware.UserFromContext(ctx),
+		"role",
+		name,
+	)
+	w.WriteHeader(http.StatusNoContent)
 }

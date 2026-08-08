@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,8 @@ import (
 	"github.com/gorilla/mux"
 
 	"phenix/api/disk"
+	"phenix/api/image"
+	"phenix/util/common"
 	"phenix/util/mm"
 	"phenix/util/plog"
 	"phenix/web/middleware"
@@ -560,4 +563,191 @@ func normalizeDstDisk(src, dst string) string {
 	}
 
 	return dst
+}
+
+type buildImageRequest struct {
+	Verbosity int    `json:"verbosity"`
+	Cache     bool   `json:"cache"`
+	DryRun    bool   `json:"dry_run"`
+	Output    string `json:"output"`
+}
+
+// BuildImage - POST /images/{name}/build.
+// Asynchronously builds the named VM disk image using vmdb2.
+func BuildImage(w http.ResponseWriter, r *http.Request) {
+	plog.Debug(plog.TypeSystem, "HTTP handler called", "handler", "BuildImage")
+
+	var (
+		ctx     = r.Context()
+		role, _ = ctx.Value(middleware.ContextKeyRole).(rbac.Role)
+		vars    = mux.Vars(r)
+		name    = vars["name"]
+	)
+
+	if !role.Allowed("images", "create", name) {
+		user, _ := ctx.Value(middleware.ContextKeyUser).(string)
+		plog.Warn(
+			plog.TypeSecurity,
+			"building image not allowed",
+			"user",
+			user,
+			"image",
+			name,
+		)
+		http.Error(w, "forbidden", http.StatusForbidden)
+
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		plog.Error(plog.TypeSystem, "reading request body", "err", err)
+		http.Error(w, "unable to read request body", http.StatusInternalServerError)
+
+		return
+	}
+
+	var req buildImageRequest
+
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			plog.Error(plog.TypeSystem, "unmarshaling request body", "err", err)
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+
+			return
+		}
+	}
+
+	if req.Output == "" {
+		req.Output = common.PhenixBase + "/images"
+	}
+
+	// Require absolute output paths to prevent directory traversal.
+	if !filepath.IsAbs(req.Output) {
+		http.Error(w, "output must be an absolute path", http.StatusBadRequest)
+
+		return
+	}
+
+	req.Output = filepath.Clean(req.Output)
+
+	user, _ := ctx.Value(middleware.ContextKeyUser).(string)
+
+	plog.Info(
+		plog.TypeAction,
+		"image build started",
+		"user",
+		user,
+		"image",
+		name,
+	)
+
+	go func() {
+		// Use a background context so the build continues after the HTTP request completes.
+		buildCtx := context.Background()
+
+		if err := image.Build(buildCtx, name, req.Verbosity, req.Cache, req.DryRun, req.Output); err != nil {
+			plog.Error(plog.TypeSystem, "building image", "image", name, "err", err)
+		} else {
+			plog.Info(plog.TypeSystem, "image build complete", "image", name)
+		}
+	}()
+
+	w.WriteHeader(http.StatusAccepted)
+}
+
+type injectMiniExeRequest struct {
+	Exe  string `json:"exe"`
+	Disk string `json:"disk"`
+	SVC  string `json:"svc"`
+}
+
+// InjectMiniExe - POST /disks/inject.
+// Injects miniccc/minirouter executable into the specified disk image.
+func InjectMiniExe(w http.ResponseWriter, r *http.Request) {
+	plog.Debug(plog.TypeSystem, "HTTP handler called", "handler", "InjectMiniExe")
+
+	var (
+		ctx     = r.Context()
+		role, _ = ctx.Value(middleware.ContextKeyRole).(rbac.Role)
+	)
+
+	if !role.Allowed("disks", "create") {
+		user, _ := ctx.Value(middleware.ContextKeyUser).(string)
+		plog.Warn(
+			plog.TypeSecurity,
+			"injecting miniexe not allowed",
+			"user",
+			user,
+		)
+		http.Error(w, "forbidden", http.StatusForbidden)
+
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		plog.Error(plog.TypeSystem, "reading request body", "err", err)
+		http.Error(w, "unable to read request body", http.StatusInternalServerError)
+
+		return
+	}
+
+	var req injectMiniExeRequest
+
+	if err := json.Unmarshal(body, &req); err != nil {
+		plog.Error(plog.TypeSystem, "unmarshaling request body", "err", err)
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+
+		return
+	}
+
+	if req.Exe == "" {
+		http.Error(w, "exe path is required", http.StatusBadRequest)
+
+		return
+	}
+
+	if req.Disk == "" {
+		http.Error(w, "disk path is required", http.StatusBadRequest)
+
+		return
+	}
+
+	// Require absolute paths to prevent directory traversal.
+	if !filepath.IsAbs(req.Exe) {
+		http.Error(w, "exe must be an absolute path", http.StatusBadRequest)
+
+		return
+	}
+
+	if !filepath.IsAbs(req.Disk) {
+		http.Error(w, "disk must be an absolute path", http.StatusBadRequest)
+
+		return
+	}
+
+	// Clean paths to eliminate any traversal elements.
+	req.Exe = filepath.Clean(req.Exe)
+	req.Disk = filepath.Clean(req.Disk)
+
+	if err := image.InjectMiniExe(req.Exe, req.Disk, req.SVC); err != nil {
+		plog.Error(plog.TypeSystem, "injecting mini exe", "exe", req.Exe, "disk", req.Disk, "err", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+
+		return
+	}
+
+	user, _ := ctx.Value(middleware.ContextKeyUser).(string)
+	plog.Info(
+		plog.TypeAction,
+		"mini exe injected",
+		"user",
+		user,
+		"exe",
+		req.Exe,
+		"disk",
+		req.Disk,
+	)
+	w.WriteHeader(http.StatusNoContent)
 }
