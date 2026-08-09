@@ -92,27 +92,6 @@ func ConfigureUsers(users []string) error {
 	return nil
 }
 
-func addExpandedRoutes(api *mux.Router) {
-	api.HandleFunc("/experiments/{name}/apps/input", GetExperimentAppsInput).Methods("GET", "OPTIONS")
-	api.HandleFunc("/experiments/{name}/reconfigure", ReconfigureExperiment).Methods("POST", "OPTIONS")
-	api.HandleFunc("/experiments/{exp}/vms/{name}/connect", ConnectVM).Methods("POST", "OPTIONS")
-	api.HandleFunc("/experiments/{exp}/vms/{name}/disconnect", DisconnectVM).Methods("POST", "OPTIONS")
-	api.HandleFunc("/experiments/{exp}/vms/{name}/resetDisk", ResetVMDisk).Methods("POST", "OPTIONS")
-	api.HandleFunc("/experiments/{name}/vlans/aliases", GetExperimentVLANAliases).Methods("GET", "OPTIONS")
-	api.HandleFunc("/experiments/{name}/vlans/aliases", SetExperimentVLANAlias).Methods("POST", "OPTIONS")
-	api.HandleFunc("/experiments/{name}/vlans/ranges", GetExperimentVLANRanges).Methods("GET", "OPTIONS")
-	api.HandleFunc("/experiments/{name}/vlans/ranges", SetExperimentVLANRange).Methods("POST", "OPTIONS")
-	api.HandleFunc("/disks/inject", InjectMiniExe).Methods("POST", "OPTIONS")
-	api.HandleFunc("/images/{name}/build", GetImageBuild).Methods("GET", "OPTIONS")
-	api.HandleFunc("/images/{name}/build", BuildImage).Methods("POST", "OPTIONS")
-	api.HandleFunc("/vlans", GetVLANs).Methods("GET", "OPTIONS")
-	api.HandleFunc("/schedulers", GetSchedulers).Methods("GET", "OPTIONS")
-	api.HandleFunc("/roles", CreateRole).Methods("POST", "OPTIONS")
-	api.HandleFunc("/roles/{name}", GetRole).Methods("GET", "OPTIONS")
-	api.HandleFunc("/roles/{name}", UpdateRole).Methods("PATCH", "OPTIONS")
-	api.HandleFunc("/roles/{name}", DeleteRole).Methods("DELETE", "OPTIONS")
-}
-
 //nolint:funlen,maintidx // server startup
 func Start(opts ...ServerOption) error {
 	o = newServerOptions(opts...)
@@ -243,6 +222,8 @@ func Start(opts ...ServerOption) error {
 	api.HandleFunc("/experiments/{name}", DeleteExperiment).Methods("DELETE", "OPTIONS")
 	api.Handle("/experiments/{name}/apps", weberror.ErrorHandler(GetExperimentApps)).
 		Methods("GET", "OPTIONS")
+	api.HandleFunc("/experiments/{name}/apps/input", GetExperimentAppsInput).Methods("GET", "OPTIONS")
+	api.HandleFunc("/experiments/{name}/reconfigure", ReconfigureExperiment).Methods("POST", "OPTIONS")
 	api.Handle("/experiments/{name}/start", weberror.ErrorHandler(StartExperiment)).
 		Methods("POST", "OPTIONS")
 	api.Handle("/experiments/{name}/stop", weberror.ErrorHandler(StopExperiment)).
@@ -290,6 +271,14 @@ func Start(opts ...ServerOption) error {
 	api.HandleFunc("/experiments/{name}/scorch/terminals/{run}/{loop}/{stage}/{cmp}", scorch.ConnectTerminal).
 		Methods("GET", "OPTIONS")
 	api.HandleFunc("/experiments/{name}/soh", GetExperimentSoH).Methods("GET", "OPTIONS")
+	api.HandleFunc("/experiments/{name}/vlans/aliases", GetExperimentVLANAliases).
+		Methods("GET", "OPTIONS")
+	api.HandleFunc("/experiments/{name}/vlans/aliases", SetExperimentVLANAlias).
+		Methods("POST", "OPTIONS")
+	api.HandleFunc("/experiments/{name}/vlans/ranges", GetExperimentVLANRanges).
+		Methods("GET", "OPTIONS")
+	api.HandleFunc("/experiments/{name}/vlans/ranges", SetExperimentVLANRange).
+		Methods("POST", "OPTIONS")
 	api.HandleFunc("/experiments/{exp}/vms", GetVMs).Methods("GET", "OPTIONS")
 	api.HandleFunc("/experiments/{exp}/vms", UpdateVMs).Methods("PATCH", "OPTIONS")
 	api.HandleFunc("/experiments/{exp}/vms/{name}", GetVM).Methods("GET", "OPTIONS")
@@ -301,6 +290,11 @@ func Start(opts ...ServerOption) error {
 	api.HandleFunc("/experiments/{exp}/vms/{name}/stop", StopVM).Methods("POST", "OPTIONS")
 	api.HandleFunc("/experiments/{exp}/vms/{name}/shutdown", ShutdownVM).Methods("GET", "OPTIONS")
 	api.HandleFunc("/experiments/{exp}/vms/{name}/redeploy", RedeployVM).Methods("POST", "OPTIONS")
+	api.HandleFunc("/experiments/{exp}/vms/{name}/connect", ConnectVM).Methods("POST", "OPTIONS")
+	api.HandleFunc("/experiments/{exp}/vms/{name}/disconnect", DisconnectVM).
+		Methods("POST", "OPTIONS")
+	api.HandleFunc("/experiments/{exp}/vms/{name}/resetDisk", ResetVMDisk).
+		Methods("POST", "OPTIONS")
 	api.HandleFunc("/experiments/{exp}/vms/{name}/cdrom", ChangeOpticalDisc).
 		Methods("POST", "OPTIONS")
 	api.HandleFunc("/experiments/{exp}/vms/{name}/cdrom", EjectOpticalDisc).
@@ -352,6 +346,9 @@ func Start(opts ...ServerOption) error {
 	}
 
 	api.HandleFunc("/disks", GetDisks).Methods("GET", "OPTIONS")
+	api.HandleFunc("/disks/inject", InjectMiniExe).Methods("POST", "OPTIONS")
+	api.HandleFunc("/images/{name}/build", GetImageBuild).Methods("GET", "OPTIONS")
+	api.HandleFunc("/images/{name}/build", BuildImage).Methods("POST", "OPTIONS")
 	api.HandleFunc("/disks/snapshot", SnapshotDisk).
 		Methods("POST", "OPTIONS").
 		Queries("disk", "{disk}", "new", "{new}")
@@ -379,6 +376,8 @@ func Start(opts ...ServerOption) error {
 	api.HandleFunc("/topologies", GetTopologies).Methods("GET", "OPTIONS")
 	api.HandleFunc("/topologies/{topo}/scenarios", GetScenarios).Methods("GET", "OPTIONS")
 	api.HandleFunc("/hosts", GetClusterHosts).Methods("GET", "OPTIONS")
+	api.HandleFunc("/vlans", GetVLANs).Methods("GET", "OPTIONS")
+	api.HandleFunc("/schedulers", GetSchedulers).Methods("GET", "OPTIONS")
 	api.HandleFunc("/users", GetUsers).Methods("GET", "OPTIONS")
 	api.HandleFunc("/users", CreateUser).Methods("POST", "OPTIONS")
 	api.HandleFunc("/users/{username}", GetUser).Methods("GET", "OPTIONS")
@@ -386,7 +385,10 @@ func Start(opts ...ServerOption) error {
 	api.HandleFunc("/users/{username}", DeleteUser).Methods("DELETE", "OPTIONS")
 	api.HandleFunc("/users/{username}/tokens", CreateUserToken).Methods("POST", "OPTIONS")
 	api.HandleFunc("/roles", GetRoles).Methods("GET", "OPTIONS")
-	addExpandedRoutes(api)
+	api.HandleFunc("/roles", CreateRole).Methods("POST", "OPTIONS")
+	api.HandleFunc("/roles/{name}", GetRole).Methods("GET", "OPTIONS")
+	api.HandleFunc("/roles/{name}", UpdateRole).Methods("PATCH", "OPTIONS")
+	api.HandleFunc("/roles/{name}", DeleteRole).Methods("DELETE", "OPTIONS")
 	api.HandleFunc("/signup", Signup).Methods("POST", "OPTIONS")
 	api.HandleFunc("/login", Login).Methods("GET", "POST", "OPTIONS")
 	api.HandleFunc("/logout", Logout).Methods("GET", "OPTIONS")

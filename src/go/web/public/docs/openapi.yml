@@ -377,6 +377,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Experiment"
+    patch:
+      summary: Update an existing experiment
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: successful operation
     delete:
       tags:
         - Experiments
@@ -583,6 +593,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VMs"
+    patch:
+      summary: Update VMs in an experiment
+      parameters:
+        - name: exp_name
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: successful operation
   "/experiments/{exp_name}/vms/{vm_name}":
     get:
       tags:
@@ -1067,6 +1087,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Disks"
+    post:
+      summary: Upload a disk
+      responses:
+        "200":
+          description: successful operation
+    delete:
+      summary: Delete a disk
+      responses:
+        "200":
+          description: successful operation
   "/disks/inject":
     post:
       tags:
@@ -1759,12 +1789,352 @@ paths:
       responses:
         "204":
           description: successful operation
+  "/builder/topologies":
+    get:
+      summary: Get available builder topologies
+      responses: &successfulResponse
+        "200":
+          description: successful operation
+  "/builder/topologies/{name}":
+    parameters: [{ $ref: "#/components/parameters/name" }]
+    get:
+      summary: Get a builder topology
+      responses: *successfulResponse
+  "/configs/download":
+    post:
+      summary: Download a collection of configs
+      responses: *successfulResponse
+  "/experiments/builder":
+    post:
+      summary: Create an experiment from the builder
+      responses: *successfulResponse
+    put:
+      summary: Update an experiment from the builder
+      responses: *successfulResponse
+  "/experiments/{name}/apps":
+    parameters: [{ $ref: "#/components/parameters/name" }]
+    get:
+      summary: Get the applications configured for an experiment
+      responses: *successfulResponse
+  "/experiments/{exp}/netflow":
+    parameters: [{ $ref: "#/components/parameters/exp" }]
+    get:
+      summary: Get experiment netflow status
+      responses: *successfulResponse
+    post:
+      summary: Start experiment netflow
+      responses: *successfulResponse
+    delete:
+      summary: Stop experiment netflow
+      responses: *successfulResponse
+  "/experiments/{exp}/netflow/ws":
+    parameters: [{ $ref: "#/components/parameters/exp" }]
+    get:
+      summary: Stream experiment netflow
+      responses: *successfulResponse
+  "/experiments/{name}/topology":
+    parameters: [{ $ref: "#/components/parameters/name" }]
+    get:
+      summary: Get an experiment topology
+      responses: *successfulResponse
+  "/experiments/{name}/topology/search":
+    parameters: [{ $ref: "#/components/parameters/name" }]
+    get:
+      summary: Search an experiment topology
+      responses: *successfulResponse
+  "/experiments/{name}/trigger":
+    parameters: [{ $ref: "#/components/parameters/name" }]
+    post:
+      summary: Trigger experiment applications
+      responses: *successfulResponse
+    delete:
+      summary: Cancel triggered experiment applications
+      responses: *successfulResponse
+  "/experiments/{exp}/captureSubnet":
+    parameters: [{ $ref: "#/components/parameters/exp" }]
+    post:
+      summary: Start a subnet packet capture
+      responses: *successfulResponse
+  "/experiments/{exp}/stopCaptureSubnet":
+    parameters: [{ $ref: "#/components/parameters/exp" }]
+    post:
+      summary: Stop a subnet packet capture
+      responses: *successfulResponse
+  "/experiments/{name}/scorch/components/{run}/{loop}/{stage}/{cmp}":
+    parameters: [{ $ref: "#/components/parameters/name" }, { $ref: "#/components/parameters/run" }, { $ref: "#/components/parameters/loop" }, { $ref: "#/components/parameters/stage" }, { $ref: "#/components/parameters/cmp" }]
+    get:
+      summary: Get Scorch component output
+      responses: *successfulResponse
+  "/experiments/{name}/scorch/components/{run}/{loop}/{stage}/{cmp}/ws":
+    parameters: [{ $ref: "#/components/parameters/name" }, { $ref: "#/components/parameters/run" }, { $ref: "#/components/parameters/loop" }, { $ref: "#/components/parameters/stage" }, { $ref: "#/components/parameters/cmp" }]
+    get:
+      summary: Stream Scorch component output
+      responses: *successfulResponse
+  "/experiments/{name}/scorch/pipelines":
+    parameters: [{ $ref: "#/components/parameters/name" }]
+    get:
+      summary: Get Scorch pipelines
+      responses: *successfulResponse
+  "/experiments/{name}/scorch/pipelines/{run}/{loop}":
+    parameters: [{ $ref: "#/components/parameters/name" }, { $ref: "#/components/parameters/run" }, { $ref: "#/components/parameters/loop" }]
+    get:
+      summary: Get a Scorch pipeline
+      responses: *successfulResponse
+  "/experiments/{name}/scorch/pipelines/{run}":
+    parameters: [{ $ref: "#/components/parameters/name" }, { $ref: "#/components/parameters/run" }]
+    post:
+      summary: Start a Scorch pipeline
+      responses: *successfulResponse
+    delete:
+      summary: Cancel a Scorch pipeline
+      responses: *successfulResponse
+  "/experiments/{name}/scorch/terminals":
+    parameters: [{ $ref: "#/components/parameters/name" }]
+    get:
+      summary: Get Scorch terminals
+      responses: *successfulResponse
+  "/experiments/{name}/scorch/terminals/{pid}":
+    parameters: [{ $ref: "#/components/parameters/name" }, { $ref: "#/components/parameters/pid" }]
+    get:
+      summary: Connect to a Scorch terminal
+      responses: *successfulResponse
+  "/experiments/{name}/scorch/terminals/{pid}/exit/{id}":
+    parameters: [{ $ref: "#/components/parameters/name" }, { $ref: "#/components/parameters/pid" }, { $ref: "#/components/parameters/id" }]
+    post:
+      summary: Exit a Scorch terminal
+      responses: *successfulResponse
+  "/experiments/{name}/scorch/terminals/{pid}/ws/{id}":
+    parameters: [{ $ref: "#/components/parameters/name" }, { $ref: "#/components/parameters/pid" }, { $ref: "#/components/parameters/id" }]
+    get:
+      summary: Stream a Scorch terminal
+      responses: *successfulResponse
+  "/experiments/{name}/scorch/terminals/{run}/{loop}/{stage}/{cmp}":
+    parameters: [{ $ref: "#/components/parameters/name" }, { $ref: "#/components/parameters/run" }, { $ref: "#/components/parameters/loop" }, { $ref: "#/components/parameters/stage" }, { $ref: "#/components/parameters/cmp" }]
+    get:
+      summary: Connect to a Scorch component terminal
+      responses: *successfulResponse
+  "/experiments/{name}/soh":
+    parameters: [{ $ref: "#/components/parameters/name" }]
+    get:
+      summary: Get experiment state of health
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/reset":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    get:
+      summary: Reset a VM
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/restart":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    get:
+      summary: Restart a VM
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/shutdown":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    get:
+      summary: Shut down a VM
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/cdrom":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    post:
+      summary: Change a VM optical disc
+      responses: *successfulResponse
+    delete:
+      summary: Eject a VM optical disc
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/vnc":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    get:
+      summary: Get a VM VNC client
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/commit":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    post:
+      summary: Commit a VM disk
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/memorySnapshot":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    post:
+      summary: Create a VM memory snapshot
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/forwards":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    get:
+      summary: Get VM port forwards
+      responses: *successfulResponse
+    post:
+      summary: Create a VM port forward
+      responses: *successfulResponse
+    delete:
+      summary: Delete a VM port forward
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/forwards/{host}/{port}/ws":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }, { $ref: "#/components/parameters/host" }, { $ref: "#/components/parameters/port" }]
+    get:
+      summary: Connect to a VM port forward
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/mount":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    post:
+      summary: Mount a VM disk
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/unmount":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    delete:
+      summary: Unmount a VM disk
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/files":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    get:
+      summary: Get files on a mounted VM disk
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/files/download":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    get:
+      summary: Download a file from a mounted VM disk
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/files/upload":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    put:
+      summary: Upload a file to a mounted VM disk
+      responses: *successfulResponse
+  "/experiments/{exp}/vms/{name}/files/copy":
+    parameters: [{ $ref: "#/components/parameters/exp" }, { $ref: "#/components/parameters/name" }]
+    post:
+      summary: Copy an experiment file to a mounted VM disk
+      responses: *successfulResponse
+  "/disks/snapshot":
+    post:
+      summary: Snapshot a disk
+      responses: *successfulResponse
+  "/disks/rebase":
+    post:
+      summary: Rebase a disk
+      responses: *successfulResponse
+  "/disks/resize":
+    post:
+      summary: Resize a disk
+      responses: *successfulResponse
+  "/disks/commit":
+    post:
+      summary: Commit a disk
+      responses: *successfulResponse
+  "/disks/clone":
+    post:
+      summary: Clone a disk
+      responses: *successfulResponse
+  "/disks/rename":
+    post:
+      summary: Rename a disk
+      responses: *successfulResponse
+  "/disks/download":
+    get:
+      summary: Download a disk
+      responses: *successfulResponse
+  "/topologies/{topo}/scenarios":
+    parameters: [{ $ref: "#/components/parameters/topo" }]
+    get:
+      summary: Get scenarios for a topology
+      responses: *successfulResponse
+  "/users/{username}/tokens":
+    parameters: [{ $ref: "#/components/parameters/username" }]
+    post:
+      summary: Create a user access token
+      responses: *successfulResponse
+  "/logs":
+    get:
+      summary: Get server logs
+      responses: *successfulResponse
+  "/ws":
+    get:
+      summary: Connect to the event broker
+      responses: *successfulResponse
+  "/console":
+    post:
+      summary: Create a server console
+      responses: *successfulResponse
+  "/console/{pid}/ws":
+    parameters: [{ $ref: "#/components/parameters/pid" }]
+    get:
+      summary: Connect to a server console
+      responses: *successfulResponse
+  "/console/{pid}/size":
+    parameters: [{ $ref: "#/components/parameters/pid" }]
+    post:
+      summary: Resize a server console
+      responses: *successfulResponse
+  "/settings":
+    get:
+      summary: Get server settings
+      responses: *successfulResponse
+    post:
+      summary: Update server settings
+      responses: *successfulResponse
+  "/settings/password":
+    get:
+      summary: Get password requirements
+      responses: *successfulResponse
+  "/workflow/apply/{branch}":
+    parameters: [{ $ref: "#/components/parameters/branch" }]
+    post:
+      summary: Apply a workflow branch
+      responses: *successfulResponse
+  "/workflow/configs/{branch}":
+    parameters: [{ $ref: "#/components/parameters/branch" }]
+    post:
+      summary: Create or update a workflow config
+      responses: *successfulResponse
+  "/options":
+    get:
+      summary: Get server options
+      responses: *successfulResponse
 externalDocs:
   description: Find out more about Swagger
   url: http://swagger.io
 servers:
   - url: http://localhost:3000/api/v1
 components:
+  parameters:
+    name: &pathParameter
+      name: name
+      in: path
+      required: true
+      schema: { type: string }
+    exp:
+      <<: *pathParameter
+      name: exp
+    run:
+      <<: *pathParameter
+      name: run
+    loop:
+      <<: *pathParameter
+      name: loop
+    stage:
+      <<: *pathParameter
+      name: stage
+    cmp:
+      <<: *pathParameter
+      name: cmp
+    pid:
+      <<: *pathParameter
+      name: pid
+    id:
+      <<: *pathParameter
+      name: id
+    host:
+      <<: *pathParameter
+      name: host
+    port:
+      <<: *pathParameter
+      name: port
+    topo:
+      <<: *pathParameter
+      name: topo
+    username:
+      <<: *pathParameter
+      name: username
+    branch:
+      <<: *pathParameter
+      name: branch
   schemas:
     Configs:
       type: object
