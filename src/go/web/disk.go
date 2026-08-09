@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -579,7 +580,7 @@ func normalizeBuildOutput(output string) (string, error) {
 	}
 
 	if !filepath.IsAbs(output) {
-		return "", fmt.Errorf("output must be an absolute path")
+		return "", errors.New("output must be an absolute path")
 	}
 
 	return filepath.Clean(output), nil
@@ -590,10 +591,13 @@ type buildImageStatus struct {
 	Error  string `json:"error,omitempty"`
 }
 
-var imageBuilds = struct { //nolint:gochecknoglobals // shared asynchronous build state
-	sync.RWMutex
+type imageBuildStore struct {
+	mu     sync.RWMutex
 	status map[string]buildImageStatus
-}{
+}
+
+var imageBuilds = imageBuildStore{ //nolint:gochecknoglobals // shared asynchronous build state
+	mu:     sync.RWMutex{},
 	status: make(map[string]buildImageStatus),
 }
 
@@ -652,16 +656,16 @@ func BuildImage(w http.ResponseWriter, r *http.Request) {
 
 	user, _ := ctx.Value(middleware.ContextKeyUser).(string)
 
-	imageBuilds.Lock()
+	imageBuilds.mu.Lock()
 	if status, ok := imageBuilds.status[name]; ok && status.Status == "building" {
-		imageBuilds.Unlock()
+		imageBuilds.mu.Unlock()
 		http.Error(w, "image build already in progress", http.StatusConflict)
 
 		return
 	}
 
-	imageBuilds.status[name] = buildImageStatus{Status: "building"}
-	imageBuilds.Unlock()
+	imageBuilds.status[name] = buildImageStatus{Status: "building", Error: ""}
+	imageBuilds.mu.Unlock()
 
 	plog.Info(
 		plog.TypeAction,
@@ -677,14 +681,14 @@ func BuildImage(w http.ResponseWriter, r *http.Request) {
 		buildCtx := context.Background()
 
 		if err := image.Build(buildCtx, name, req.Verbosity, req.Cache, req.DryRun, req.Output); err != nil {
-			imageBuilds.Lock()
+			imageBuilds.mu.Lock()
 			imageBuilds.status[name] = buildImageStatus{Status: "failed", Error: err.Error()}
-			imageBuilds.Unlock()
+			imageBuilds.mu.Unlock()
 			plog.Error(plog.TypeSystem, "building image", "image", name, "err", err)
 		} else {
-			imageBuilds.Lock()
-			imageBuilds.status[name] = buildImageStatus{Status: "complete"}
-			imageBuilds.Unlock()
+			imageBuilds.mu.Lock()
+			imageBuilds.status[name] = buildImageStatus{Status: "complete", Error: ""}
+			imageBuilds.mu.Unlock()
 			plog.Info(plog.TypeSystem, "image build complete", "image", name)
 		}
 	}()
@@ -706,9 +710,9 @@ func GetImageBuild(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	imageBuilds.RLock()
+	imageBuilds.mu.RLock()
 	status, ok := imageBuilds.status[name]
-	imageBuilds.RUnlock()
+	imageBuilds.mu.RUnlock()
 
 	if !ok {
 		http.Error(w, "image build not found", http.StatusNotFound)
@@ -735,11 +739,11 @@ func normalizeInjectMiniExeRequest(req injectMiniExeRequest) (injectMiniExeReque
 	}
 
 	if req.Disk == "" {
-		return req, fmt.Errorf("disk path is required")
+		return req, errors.New("disk path is required")
 	}
 
 	if !filepath.IsAbs(req.Exe) {
-		return req, fmt.Errorf("exe must be an absolute path")
+		return req, errors.New("exe must be an absolute path")
 	}
 
 	if !filepath.IsAbs(req.Disk) {

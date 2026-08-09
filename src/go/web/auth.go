@@ -15,8 +15,8 @@ import (
 	"phenix/api/config"
 	"phenix/api/settings"
 	"phenix/store"
-	"phenix/util/plog"
 	v1 "phenix/types/version/v1"
+	"phenix/util/plog"
 	"phenix/web/middleware"
 	"phenix/web/rbac"
 	"phenix/web/util"
@@ -596,7 +596,7 @@ func GetRole(w http.ResponseWriter, r *http.Request) {
 }
 
 type createRoleRequest struct {
-	Name     string       `json:"name"`
+	Name     string   `json:"name"`
 	Policies []Policy `json:"policies"`
 }
 
@@ -674,7 +674,7 @@ func CreateRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	roleOut := roleFromRBAC(rbac.Role{Spec: spec}) //nolint:exhaustruct // partial initialization
+	roleOut := roleFromRBAC(rbac.Role{Spec: spec})
 
 	out, err := json.Marshal(roleOut)
 	if err != nil {

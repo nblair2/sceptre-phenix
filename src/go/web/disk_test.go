@@ -79,6 +79,10 @@ func TestNormalizeInjectMiniExeRequest(t *testing.T) {
 				t.Fatalf("normalizeInjectMiniExeRequest() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
+			if tt.wantErr {
+				return
+			}
+
 			if got.Exe != tt.wantExe {
 				t.Errorf("executable = %q, want %q", got.Exe, tt.wantExe)
 			}
@@ -93,14 +97,14 @@ func TestNormalizeInjectMiniExeRequest(t *testing.T) {
 func TestGetImageBuild(t *testing.T) {
 	const name = "test-image"
 
-	imageBuilds.Lock()
-	imageBuilds.status[name] = buildImageStatus{Status: "complete"}
-	imageBuilds.Unlock()
+	imageBuilds.mu.Lock()
+	imageBuilds.status[name] = buildImageStatus{Status: "complete", Error: ""}
+	imageBuilds.mu.Unlock()
 
 	t.Cleanup(func() {
-		imageBuilds.Lock()
+		imageBuilds.mu.Lock()
 		delete(imageBuilds.status, name)
-		imageBuilds.Unlock()
+		imageBuilds.mu.Unlock()
 	})
 
 	role := rbac.Role{Spec: &v1.RoleSpec{Policies: []*v1.PolicySpec{{
