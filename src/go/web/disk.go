@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gorilla/mux"
 
@@ -572,6 +573,30 @@ type buildImageRequest struct {
 	Output    string `json:"output"`
 }
 
+func normalizeBuildOutput(output string) (string, error) {
+	if output == "" {
+		output = filepath.Join(common.PhenixBase, "vmdb")
+	}
+
+	if !filepath.IsAbs(output) {
+		return "", fmt.Errorf("output must be an absolute path")
+	}
+
+	return filepath.Clean(output), nil
+}
+
+type buildImageStatus struct {
+	Status string `json:"status"`
+	Error  string `json:"error,omitempty"`
+}
+
+var imageBuilds = struct { //nolint:gochecknoglobals // shared asynchronous build state
+	sync.RWMutex
+	status map[string]buildImageStatus
+}{
+	status: make(map[string]buildImageStatus),
+}
+
 // BuildImage - POST /images/{name}/build.
 // Asynchronously builds the named VM disk image using vmdb2.
 func BuildImage(w http.ResponseWriter, r *http.Request) {
@@ -618,20 +643,25 @@ func BuildImage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if req.Output == "" {
-		req.Output = common.PhenixBase + "/images"
-	}
-
-	// Require absolute output paths to prevent directory traversal.
-	if !filepath.IsAbs(req.Output) {
-		http.Error(w, "output must be an absolute path", http.StatusBadRequest)
+	req.Output, err = normalizeBuildOutput(req.Output)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 
 		return
 	}
 
-	req.Output = filepath.Clean(req.Output)
-
 	user, _ := ctx.Value(middleware.ContextKeyUser).(string)
+
+	imageBuilds.Lock()
+	if status, ok := imageBuilds.status[name]; ok && status.Status == "building" {
+		imageBuilds.Unlock()
+		http.Error(w, "image build already in progress", http.StatusConflict)
+
+		return
+	}
+
+	imageBuilds.status[name] = buildImageStatus{Status: "building"}
+	imageBuilds.Unlock()
 
 	plog.Info(
 		plog.TypeAction,
@@ -647,19 +677,79 @@ func BuildImage(w http.ResponseWriter, r *http.Request) {
 		buildCtx := context.Background()
 
 		if err := image.Build(buildCtx, name, req.Verbosity, req.Cache, req.DryRun, req.Output); err != nil {
+			imageBuilds.Lock()
+			imageBuilds.status[name] = buildImageStatus{Status: "failed", Error: err.Error()}
+			imageBuilds.Unlock()
 			plog.Error(plog.TypeSystem, "building image", "image", name, "err", err)
 		} else {
+			imageBuilds.Lock()
+			imageBuilds.status[name] = buildImageStatus{Status: "complete"}
+			imageBuilds.Unlock()
 			plog.Info(plog.TypeSystem, "image build complete", "image", name)
 		}
 	}()
 
+	w.Header().Set("Location", "/api/v1/images/"+name+"/build")
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// GetImageBuild - GET /images/{name}/build.
+// Returns the status of the most recent build for the named VM disk image.
+func GetImageBuild(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	role, _ := ctx.Value(middleware.ContextKeyRole).(rbac.Role)
+	name := mux.Vars(r)["name"]
+
+	if !role.Allowed("images", "get", name) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+
+		return
+	}
+
+	imageBuilds.RLock()
+	status, ok := imageBuilds.status[name]
+	imageBuilds.RUnlock()
+
+	if !ok {
+		http.Error(w, "image build not found", http.StatusNotFound)
+
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(status); err != nil {
+		plog.Error(plog.TypeSystem, "encoding image build status", "image", name, "err", err)
+	}
 }
 
 type injectMiniExeRequest struct {
 	Exe  string `json:"exe"`
 	Disk string `json:"disk"`
 	SVC  string `json:"svc"`
+}
+
+func normalizeInjectMiniExeRequest(req injectMiniExeRequest) (injectMiniExeRequest, error) {
+	if req.Exe == "" {
+		req.Exe = filepath.Join(common.PhenixBase, "miniccc")
+	}
+
+	if req.Disk == "" {
+		return req, fmt.Errorf("disk path is required")
+	}
+
+	if !filepath.IsAbs(req.Exe) {
+		return req, fmt.Errorf("exe must be an absolute path")
+	}
+
+	if !filepath.IsAbs(req.Disk) {
+		req.Disk = filepath.Join(common.PhenixBase, "vmdb", req.Disk)
+	}
+
+	req.Exe = filepath.Clean(req.Exe)
+	req.Disk = filepath.Clean(req.Disk)
+
+	return req, nil
 }
 
 // InjectMiniExe - POST /disks/inject.
@@ -702,34 +792,12 @@ func InjectMiniExe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Exe == "" {
-		http.Error(w, "exe path is required", http.StatusBadRequest)
+	req, err = normalizeInjectMiniExeRequest(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 
 		return
 	}
-
-	if req.Disk == "" {
-		http.Error(w, "disk path is required", http.StatusBadRequest)
-
-		return
-	}
-
-	// Require absolute paths to prevent directory traversal.
-	if !filepath.IsAbs(req.Exe) {
-		http.Error(w, "exe must be an absolute path", http.StatusBadRequest)
-
-		return
-	}
-
-	if !filepath.IsAbs(req.Disk) {
-		http.Error(w, "disk must be an absolute path", http.StatusBadRequest)
-
-		return
-	}
-
-	// Clean paths to eliminate any traversal elements.
-	req.Exe = filepath.Clean(req.Exe)
-	req.Disk = filepath.Clean(req.Disk)
 
 	if err := image.InjectMiniExe(req.Exe, req.Disk, req.SVC); err != nil {
 		plog.Error(plog.TypeSystem, "injecting mini exe", "exe", req.Exe, "disk", req.Disk, "err", err)

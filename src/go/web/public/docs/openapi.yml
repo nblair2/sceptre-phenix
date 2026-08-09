@@ -25,6 +25,12 @@ tags:
     description: Available phenix topologies
   - name: Disks
     description: Available phenix disk images
+  - name: VLANs
+    description: VLAN details and controls
+  - name: Schedulers
+    description: Available phenix schedulers
+  - name: Roles
+    description: Role details and controls
   - name: Users
     description: User details and controls
 paths:
@@ -1061,6 +1067,470 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Disks"
+  "/disks/inject":
+    post:
+      tags:
+        - Disks
+      summary: Inject miniccc or minirouter into a disk image
+      operationId: injectMiniExe
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - disk
+              properties:
+                exe:
+                  type: string
+                  default: /phenix/miniccc
+                disk:
+                  type: string
+                  description: Absolute path or a filename relative to /phenix/vmdb
+                svc:
+                  type: string
+      responses:
+        "204":
+          description: executable injected
+        "400":
+          description: invalid request
+        "403":
+          description: forbidden
+  "/images/{name}/build":
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Disks
+      summary: Get the status of the most recent image build
+      operationId: getImageBuild
+      responses:
+        "200":
+          description: image build status
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                properties:
+                  status:
+                    type: string
+                    enum:
+                      - building
+                      - complete
+                      - failed
+                  error:
+                    type: string
+        "403":
+          description: forbidden
+        "404":
+          description: no build found
+    post:
+      tags:
+        - Disks
+      summary: Build a VM disk image
+      operationId: buildImage
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                verbosity:
+                  type: integer
+                cache:
+                  type: boolean
+                dry_run:
+                  type: boolean
+                output:
+                  type: string
+                  default: /phenix/vmdb
+      responses:
+        "202":
+          description: build accepted; poll the URL in the Location header for status
+          headers:
+            Location:
+              schema:
+                type: string
+        "400":
+          description: invalid request
+        "403":
+          description: forbidden
+        "409":
+          description: build already in progress
+  "/experiments/{name}/apps/input":
+    get:
+      tags:
+        - Experiments
+      summary: Get resolved application input for an experiment
+      operationId: getExperimentAppsInput
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: resolved experiment application input
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: forbidden
+        "404":
+          description: experiment not found
+  "/experiments/{name}/reconfigure":
+    post:
+      tags:
+        - Experiments
+      summary: Reconfigure an experiment
+      operationId: reconfigureExperiment
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: experiment reconfigured
+        "403":
+          description: forbidden
+  "/experiments/{exp}/vms/{name}/connect":
+    post:
+      tags:
+        - Virtual Machines
+      summary: Connect a VM interface to a VLAN
+      operationId: connectVM
+      parameters:
+        - name: exp
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - vlan
+              properties:
+                interface:
+                  type: integer
+                vlan:
+                  type: string
+      responses:
+        "204":
+          description: VM interface connected
+        "400":
+          description: invalid request
+        "403":
+          description: forbidden
+  "/experiments/{exp}/vms/{name}/disconnect":
+    post:
+      tags:
+        - Virtual Machines
+      summary: Disconnect a VM interface
+      operationId: disconnectVM
+      parameters:
+        - name: exp
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                interface:
+                  type: integer
+      responses:
+        "204":
+          description: VM interface disconnected
+        "400":
+          description: invalid request
+        "403":
+          description: forbidden
+  "/experiments/{exp}/vms/{name}/resetDisk":
+    post:
+      tags:
+        - Virtual Machines
+      summary: Reset a VM disk
+      operationId: resetVMDisk
+      parameters:
+        - name: exp
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: VM disk reset
+        "403":
+          description: forbidden
+        "409":
+          description: VM is busy
+  "/experiments/{name}/vlans/aliases":
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - VLANs
+      summary: Get VLAN aliases for an experiment
+      operationId: getExperimentVLANAliases
+      responses:
+        "200":
+          description: VLAN aliases
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: forbidden
+    post:
+      tags:
+        - VLANs
+      summary: Set a VLAN alias for an experiment
+      operationId: setExperimentVLANAlias
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - alias
+                - id
+              properties:
+                alias:
+                  type: string
+                id:
+                  type: integer
+                force:
+                  type: boolean
+      responses:
+        "204":
+          description: VLAN alias set
+        "400":
+          description: invalid request
+        "403":
+          description: forbidden
+  "/experiments/{name}/vlans/ranges":
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - VLANs
+      summary: Get the VLAN range for an experiment
+      operationId: getExperimentVLANRange
+      responses:
+        "200":
+          description: VLAN range
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: forbidden
+    post:
+      tags:
+        - VLANs
+      summary: Set the VLAN range for an experiment
+      operationId: setExperimentVLANRange
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - min
+                - max
+              properties:
+                min:
+                  type: integer
+                max:
+                  type: integer
+                force:
+                  type: boolean
+      responses:
+        "204":
+          description: VLAN range set
+        "400":
+          description: invalid request
+        "403":
+          description: forbidden
+  "/vlans":
+    get:
+      tags:
+        - VLANs
+      summary: Get VLAN aliases for all experiments
+      operationId: getVLANs
+      responses:
+        "200":
+          description: VLAN aliases
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: forbidden
+  "/schedulers":
+    get:
+      tags:
+        - Schedulers
+      summary: Get all available schedulers
+      operationId: getSchedulers
+      responses:
+        "200":
+          description: available schedulers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  schedulers:
+                    type: array
+                    items:
+                      type: string
+        "403":
+          description: forbidden
+  "/roles":
+    get:
+      tags:
+        - Roles
+      summary: Get all roles
+      operationId: getRoles
+      responses:
+        "200":
+          description: roles
+          content:
+            application/json:
+              schema:
+                type: object
+    post:
+      tags:
+        - Roles
+      summary: Create a role
+      operationId: createRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                policies:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "201":
+          description: role created
+        "400":
+          description: invalid request
+        "403":
+          description: forbidden
+  "/roles/{name}":
+    parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      tags:
+        - Roles
+      summary: Get a role
+      operationId: getRole
+      responses:
+        "200":
+          description: role
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: forbidden
+        "404":
+          description: role not found
+    patch:
+      tags:
+        - Roles
+      summary: Update a role
+      operationId: updateRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                policies:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        "204":
+          description: role updated
+        "400":
+          description: invalid request
+        "403":
+          description: forbidden
+        "404":
+          description: role not found
+    delete:
+      tags:
+        - Roles
+      summary: Delete a role
+      operationId: deleteRole
+      responses:
+        "204":
+          description: role deleted
+        "403":
+          description: forbidden
+        "404":
+          description: role not found
   "/hosts":
     get:
       tags:
