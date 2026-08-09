@@ -68,7 +68,7 @@ func registeredAPIRoutes(t *testing.T) map[string]bool {
 		}
 
 		return errRoutesInspected
-	}, ServeUnbundled(), ServeWithUsers(nil), ServeWithFeatures([]string{"vm-mount"}))
+	}, ServeUnbundled(), ServeWithFeatures([]string{"vm-mount"}))
 	if !errors.Is(err, errRoutesInspected) {
 		t.Fatalf("inspect registered API routes: %v", err)
 	}

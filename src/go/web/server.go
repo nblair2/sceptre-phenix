@@ -108,7 +108,9 @@ func start(routerReady func(*mux.Router) error, opts ...ServerOption) error {
 		o.features["file-server"] = true
 	}
 
-	_ = ConfigureUsers(o.users)
+	if routerReady == nil {
+		_ = ConfigureUsers(o.users)
+	}
 
 	var (
 		router = mux.NewRouter().StrictSlash(true)
