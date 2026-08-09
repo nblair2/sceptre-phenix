@@ -94,6 +94,10 @@ func ConfigureUsers(users []string) error {
 
 //nolint:funlen,maintidx // server startup
 func Start(opts ...ServerOption) error {
+	return start(nil, opts...)
+}
+
+func start(routerReady func(*mux.Router) error, opts ...ServerOption) error {
 	o = newServerOptions(opts...)
 	fileServerEndpoint, err := normalizeFileServerEndpoint(o.fileServerEndpoint)
 	if err != nil {
@@ -419,6 +423,10 @@ func Start(opts ...ServerOption) error {
 
 	addRoutesToRouter(api, workflowRoutes...)
 	addRoutesToRouter(api, optionRoutes...)
+
+	if routerReady != nil {
+		return routerReady(api)
+	}
 
 	if o.allowCORS {
 		plog.Info(plog.TypeSystem, "CORS is enabled on HTTP API endpoints")
