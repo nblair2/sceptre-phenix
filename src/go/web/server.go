@@ -92,11 +92,11 @@ func ConfigureUsers(users []string) error {
 	return nil
 }
 
-//nolint:funlen,maintidx // server startup
 func Start(opts ...ServerOption) error {
 	return start(nil, opts...)
 }
 
+//nolint:funlen,maintidx // server startup
 func start(routerReady func(*mux.Router) error, opts ...ServerOption) error {
 	o = newServerOptions(opts...)
 	fileServerEndpoint, err := normalizeFileServerEndpoint(o.fileServerEndpoint)
