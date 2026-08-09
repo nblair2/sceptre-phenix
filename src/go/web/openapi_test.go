@@ -21,7 +21,7 @@ func TestOpenAPI(t *testing.T) {
 	}
 
 	documented := make(map[string]*openapi3.PathItem)
-	for path, item := range document.Paths.Map() {
+	for path, item := range document.Paths {
 		documented[canonicalPath(path)] = item
 	}
 

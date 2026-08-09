@@ -187,29 +187,6 @@ func registeredAPIRoutes(t *testing.T) map[string]bool {
 			return true
 		}
 
-		func addRouteLiteral(routes map[string]bool, literal *ast.CompositeLit) {
-			identifier, ok := literal.Type.(*ast.Ident)
-			if !ok || identifier.Name != "route" || len(literal.Elts) != 3 {
-				return
-			}
-
-			path, ok := stringLiteral(literal.Elts[0])
-			if !ok {
-				return
-			}
-
-			methods, ok := literal.Elts[2].(*ast.CompositeLit)
-			if !ok {
-				return
-			}
-
-			for _, element := range methods.Elts {
-				if method, ok := stringLiteral(element); ok {
-					routes[method+" "+path] = true
-				}
-			}
-		}
-
 		methods, ok := call.Fun.(*ast.SelectorExpr)
 		if !ok || methods.Sel.Name != "Methods" {
 			return true
@@ -246,6 +223,28 @@ func registeredAPIRoutes(t *testing.T) map[string]bool {
 	})
 
 	return routes
+}
+
+func addRouteLiteral(routes map[string]bool, literal *ast.CompositeLit) {
+	if len(literal.Elts) != 3 {
+		return
+	}
+
+	path, ok := stringLiteral(literal.Elts[0])
+	if !ok || !strings.HasPrefix(path, "/") {
+		return
+	}
+
+	methods, ok := literal.Elts[2].(*ast.CompositeLit)
+	if !ok {
+		return
+	}
+
+	for _, element := range methods.Elts {
+		if method, ok := stringLiteral(element); ok {
+			routes[method+" "+path] = true
+		}
+	}
 }
 
 func routeSetFromText(t *testing.T, routes string) map[string]bool {
