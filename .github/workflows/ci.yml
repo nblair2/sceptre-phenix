@@ -17,8 +17,35 @@ env:
   GO_VERSION: '1.24'
 
 jobs:
-  generate:
-    name: Code Generation
+  lint-go:
+    name: Lint / Format (Go)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/go
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: src/go/go.sum
+      - name: Install system dependencies
+        run: sudo apt-get update -q && sudo apt-get install -y protobuf-compiler
+      - name: Install dev dependencies
+        run: make install-dev
+      - name: Cache golangci-lint analysis cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/golangci-lint
+          key: golangci-lint-${{ hashFiles('src/go/go.sum') }}
+          restore-keys: golangci-lint-
+      - name: Generate code
+        run: make generate
+      - name: Lint
+        run: make check
+
+  test-go:
+    name: Test (Go)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,53 +58,6 @@ jobs:
       - name: Generate code
         working-directory: src/go
         run: make generate
-      - name: Upload generated files
-        uses: actions/upload-artifact@v4
-        with:
-          name: generated-files
-          path: |
-            src/go/store/mock.go
-            src/go/web/proto/*.pb.go
-            src/go/web/rbac/known_policy.go
-
-  lint-go:
-    name: Lint / Format (Go)
-    needs: generate
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: src/go
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: src/go/go.sum
-      - name: Download generated files
-        uses: actions/download-artifact@v4
-        with:
-          name: generated-files
-          path: src/go
-      - name: Install dev dependencies
-        run: make install-dev
-      - name: Lint
-        run: make check
-
-  test-go:
-    name: Test (Go)
-    needs: generate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: src/go/go.sum
-      - name: Download generated files
-        uses: actions/download-artifact@v4
-        with:
-          name: generated-files
-          path: src/go
       - name: Run tests with coverage
         working-directory: src/go
         run: make test
