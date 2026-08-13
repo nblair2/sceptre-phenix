@@ -3,6 +3,10 @@
 
 DOCKER_TAG ?= latest
 
+# Version info passed into the docker build (the image has no .git to derive it from)
+COMMIT := $(or $(COMMIT),$(shell git log -1 --format="%h"))
+TAG    := $(or $(TAG),$(shell git log -1 --format="%h"))
+
 # Define a helper for checking command existence
 check-command = @if ! command -v $(1) > /dev/null; then \
 		echo "Error: '$(1)' not found. $(2)"; \
@@ -52,7 +56,10 @@ deb:
 docker:
 	$(call check-command,docker,Please install Docker (https://docs.docker.com/get-docker/))
 	@docker info > /dev/null 2>&1 || { echo "Docker daemon is not running"; exit 1; }
-	docker build -t phenix:$(DOCKER_TAG) -f docker/Dockerfile .
+	docker build -t phenix:$(DOCKER_TAG) \
+		--build-arg PHENIX_COMMIT=$(COMMIT) --build-arg PHENIX_TAG=$(TAG) \
+		$(if $(INSTALL_CERTS),--build-arg INSTALL_CERTS=$(INSTALL_CERTS)) \
+		-f docker/Dockerfile .
 
 clean:
 	$(RM) bin/phenix

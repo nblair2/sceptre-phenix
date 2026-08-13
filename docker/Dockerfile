@@ -47,16 +47,7 @@ FROM golang:1.24.1 AS gobuilder
 RUN apt update \
   && apt install -y protobuf-compiler xz-utils
 
-COPY .git       /phenix/.git
-COPY ./Makefile /phenix/Makefile
-COPY ./src/go   /phenix/src/go
-
-WORKDIR /phenix
-
-# Copy files from jsbuilder stage
-COPY --from=jsbuilder /phenix/src/js /phenix/src/js
-COPY --from=jsbuilder /phenix/src/go/web/public/docs/index.html /phenix/src/go/web/public/docs/index.html
-
+# Install custom CA certs before anything downloads Go modules
 ARG INSTALL_CERTS=
 RUN ["/bin/bash", "-c", "if [ -n $INSTALL_CERTS ]; then \
   IFS=',' read -r -a arr <<< $INSTALL_CERTS; \
@@ -65,6 +56,19 @@ RUN ["/bin/bash", "-c", "if [ -n $INSTALL_CERTS ]; then \
       -O /usr/local/share/ca-certificates/custom$i.crt; \
   done && \
   update-ca-certificates; fi"]
+
+# Download Go modules in their own layer so they cache across source changes
+COPY src/go/go.mod src/go/go.sum /phenix/src/go/
+RUN cd /phenix/src/go && go mod download
+
+COPY ./Makefile /phenix/Makefile
+COPY ./src/go   /phenix/src/go
+
+WORKDIR /phenix
+
+# Copy files from jsbuilder stage
+COPY --from=jsbuilder /phenix/src/js /phenix/src/js
+COPY --from=jsbuilder /phenix/src/go/web/public/docs/index.html /phenix/src/go/web/public/docs/index.html
 
 ARG PHENIX_COMMIT
 ARG PHENIX_TAG

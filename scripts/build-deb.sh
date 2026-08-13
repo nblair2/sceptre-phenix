@@ -26,7 +26,10 @@ if [ -z "${PHENIX_BUILD_IMAGE}" ]; then
     # 1. Build the phenix docker image
     # This image will contain all the binaries, scripts, and dependencies.
     echo "Building phenix docker image..."
-    docker build -t ${BUILD_IMAGE} -f docker/Dockerfile .
+    SHORT_SHA=$(git rev-parse --short HEAD 2>/dev/null || true)
+    docker build -t ${BUILD_IMAGE} \
+        --build-arg PHENIX_COMMIT=${SHORT_SHA} --build-arg PHENIX_TAG=${SHORT_SHA} \
+        -f docker/Dockerfile .
 else
     echo "Using provided docker image: ${BUILD_IMAGE}..."
 fi

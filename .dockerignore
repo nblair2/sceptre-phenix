@@ -1,0 +1,12 @@
+.git
+.worktree
+bin
+build
+src/js/node_modules
+src/js/dist
+src/go/web/public/index.html
+src/go/web/public/favicon.ico
+src/go/web/public/assets
+src/go/web/public/docs/index.html
+**/.venv
+*.deb
