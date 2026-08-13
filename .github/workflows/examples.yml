@@ -10,8 +10,6 @@ on:
     paths:
       - 'examples/**'
       - '.github/workflows/examples.yml'
-  repository_dispatch:
-    types: [apps-update]
 
 env:
   GO_VERSION: '1.24'

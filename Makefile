@@ -84,8 +84,6 @@ install-dev:
 	$(call check-command,protoc,Please install protobuf-compiler (e.g. sudo apt install protobuf-compiler))
 	$(call check-command,npm,Please install npm (e.g. sudo apt install npm))
 	$(call check-command,yarn,Please install yarn (e.g. sudo npm install -g yarn))
-	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-	go install go.uber.org/mock/mockgen@latest
 	$(MAKE) -C src/go install-dev
 	$(MAKE) -C examples install-dev
 
