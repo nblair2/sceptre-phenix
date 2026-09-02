@@ -9,7 +9,7 @@ ARG PHENIX_REPO
 ARG PHENIX_BRANCH
 
 # Install Node.js
-ENV NODE_VERSION 24.16.0
+ENV NODE_VERSION=24.16.0
 RUN wget -O node.txz https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz \
   && tar -xJf node.txz -C /usr/local --strip-components=1 --no-same-owner && rm node.txz \
   && ln -s /usr/local/bin/node /usr/local/bin/nodejs
