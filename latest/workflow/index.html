@@ -1823,7 +1823,10 @@ of them is an error.</p>
   given as a <code>${VAR}</code> placeholder. Each config is created, or updated if it
   already exists.</li>
 <li><code>phenix-injects/</code> - copied to <code>&lt;base-dir.injects&gt;/&lt;name&gt;</code> on the phēnix
-  host, by default <code>/phenix/injects/&lt;name&gt;</code>, replacing any previous copy.</li>
+  host, by default <code>/phenix/injects/&lt;name&gt;</code>, replacing any previous copy.
+  By default, symlinks inside <code>phenix-injects/</code> are copied as symlinks;
+  <code>--follow-inject-symlinks</code> follows them and copies targets as regular files
+  or directories.</li>
 </ul>
 <h3 id="branch-name">Branch Name<a class="headerlink" href="#branch-name" title="Permanent link">&para;</a></h3>
 <p><code>&lt;name&gt;</code> is the <strong>workflow branch name</strong>: the directory's name, unless <code>-b</code>
@@ -1834,7 +1837,8 @@ name; other <code>${VAR}</code> placeholders are filled in from the server's env
 (see <a href="../configuration/#environment-variables">Environment Variables</a>). That's
 why configs reference injected files as
 <code>/phenix/injects/${BRANCH_NAME}/&lt;file&gt;</code>, and why one directory can be deployed
-under several names side by side. An experiment that a workflow creates is
+under several names side by side. A config's <code>kind</code> and <code>metadata.name</code> can
+use no placeholder but <code>${BRANCH_NAME}</code>. An experiment that a workflow creates is
 <a href="#actions">mapped</a> to its branch name.</p>
 <p>Configs that hard-code the injects path need <code>-b</code> set to the name they use:
 a topology that references <code>/phenix/injects/lab-a/&lt;file&gt;</code> is deployed with
@@ -1877,6 +1881,11 @@ by default <code>/phenix/topologies/NAME</code>, so the command works from any d
 <td style="text-align: left;"><code>-f, --force</code></td>
 <td style="text-align: left;"><code>false</code></td>
 <td style="text-align: left;">Allow restarting a running experiment.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>--follow-inject-symlinks</code></td>
+<td style="text-align: left;"><code>false</code></td>
+<td style="text-align: left;">Follow symlinks in <code>phenix-injects/</code> and copy targets as regular files or directories.</td>
 </tr>
 </tbody>
 </table>
@@ -1943,6 +1952,10 @@ settings of the run.</p>
 <tr>
 <td style="text-align: left;"><code>phenix workflow apply helloworld -b helloworld-2</code></td>
 <td style="text-align: left;">Deploy a second copy under another branch name.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>phenix workflow apply helloworld --follow-inject-symlinks</code></td>
+<td style="text-align: left;">Follow symlinks in <code>phenix-injects/</code> and copy targets as regular files or directories.</td>
 </tr>
 <tr>
 <td style="text-align: left;"><code>phenix workflow apply helloworld -c alt.yml</code></td>
